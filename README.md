@@ -1,7 +1,7 @@
 <div align="center">
   
 # SecureSign
-<img width="1067" height="1334" alt="gemini-svg (3)" src="https://github.com/user-attachments/assets/ab83738e-9523-471c-bf9e-bc2fcff46d69" />
+<img width="533" height="666" alt="gemini-svg (3)" src="https://github.com/user-attachments/assets/ab83738e-9523-471c-bf9e-bc2fcff46d69" />
 
 
 **Financial Signature Verification & Forgery Detection Portal**
