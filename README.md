@@ -204,24 +204,24 @@ If the average distance across all saved anchors is below our optimal threshold 
 Raw Euclidean distances are unintuitive for end-users (bank tellers). This mathematical function maps the unbounded distance into a user-friendly percentage (0% - 99.9%), clearly indicating the system's confidence level in its APPROVED/REJECTED decision.
 
 ### 6. Master Dataset Builder & Unification
-**[🔗 View in Jupyter Notebook](./notebook_name.ipynb#master-dataset-builder-all-languages)**
+**[🔗 View in Jupyter Notebook](./SecureSign.ipynb#master-dataset-builder-all-languages)**
 
 **Role & Importance:** 
 To train a robust model, we needed massive diversity. This section of our research notebook contains the complex pipeline that merges three distinct databases (CEDAR, BHSig260, and ChiSig). It dynamically parses complex naming conventions across languages, maps authors to unique IDs to prevent data leakage, and standardizes everything into a unified training structure.
 
 ### 7. Advanced Training Loop (AMP & Hard Example Mining)
-**[🔗 View in Jupyter Notebook](./notebook_name.ipynb#advanced-training-loop-with-learning-rate-scheduler-cnn)**
+**[🔗 View in Jupyter Notebook](./SecureSign.ipynb#advanced-training-loop-with-learning-rate-scheduler-cnn)**
 
 **Role & Importance:** 
 The core training engine of our system. To optimize training, we implemented **Automatic Mixed Precision (AMP)** using PyTorch's `GradScaler`, which drastically reduced VRAM usage and accelerated training. Furthermore, the loop utilizes an **Online Hard Example Mining (OHEM) Contrastive Loss**, dynamically forcing the network to penalize the hardest forgery examples in each batch rather than wasting computational power on easy, obvious pairs.
 
 ### 8. Final Test Evaluation & Metrics Dashboard
-**[🔗 View in Jupyter Notebook](./notebook_name.ipynb#final-test-set-evaluation--metrics-dashboard)**
+**[🔗 View in Jupyter Notebook](./SecureSign.ipynb#final-test-set-evaluation--metrics-dashboard)**
 
 **Role & Importance:** 
 Our robust evaluation script. It runs the trained model on tens of thousands of completely unseen pairs. It automatically calculates the Youden's J statistic from the ROC curve to find the optimal dynamic threshold, and generates a comprehensive Admin Dashboard featuring a Seaborn Confusion Matrix and the final Area Under the Curve (AUC) performance.
 
---- 
+---
 
 ## How to Run Locally
 
