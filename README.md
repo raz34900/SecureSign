@@ -169,25 +169,25 @@ The **Custom Lightweight CNN** was selected as the final production model. It su
 This section highlights the core algorithms, formulas, and logic driving the verification portal.
 
 ### 1. Unified Signature Preprocessing Pipeline
-**[🔗 View Implementation in `utils.py`](./utils.py#L10-L72)**
+**[🔗 View Implementation in `utils.py`](./utils.py#L10-L60)**
 
 **Role & Importance:** 
 Raw signatures come with immense background noise, varying angles, and printed document lines. This pipeline is the system's "secret sauce" for standardizing data. It sequentially applies Inverse Otsu Binarization (isolating ink), morphological line removal (erasing horizontal artifacts), and moment-based deskewing. This ensures the CNN focuses strictly on biometric traits rather than paper quality.
 
 ### 2. Smart Anchor Extraction (Contour Detection)
-**[🔗 View Implementation in `utils.py`](./utils.py#L75-L122)**
+**[🔗 View Implementation in `utils.py`](./utils.py#L65-L108)**
 
 **Role & Importance:** 
 A critical feature for bank tellers handling bulk enrollments. Using OpenCV's `findContours` and morphological closing, this algorithm automatically detects, groups, and crops multiple signatures written vertically on a single physical document, streamlining the database population process.
 
 ### 3. Custom Lightweight Siamese CNN
-**[🔗 View Implementation in `utils.py`](./utils.py#L125-L168)**
+**[🔗 View Implementation in `utils.py`](./utils.py#L113-L160)**
 
 **Role & Importance:** 
 Our custom 4-block Convolutional Neural Network. Unlike deep pre-trained models (e.g., ResNet18) that severely overfit on simple binary images, this lightweight architecture is perfectly balanced. It enforces strict regularization (Dropout 0.6) to learn generalizable stylistic features rather than memorizing the training set.
 
 ### 4. Distance Calculation & Verification Logic
-**[🔗 View Implementation in `app.py`](./app.py)** *(Search for `F.pairwise_distance`)*
+**[🔗 View Implementation in `app.py`](./app.py#L171-L178)**
 
 **Role & Importance:** 
 The core decision engine. Once the CNN extracts 128-dimensional embedding vectors for both the reference anchor ($x$) and the tested signature ($y$), the system calculates the Euclidean distance between them:
@@ -198,7 +198,7 @@ $d(x, y) = \sqrt{\sum_{i=1}^{128} (f(x)_i - f(y)_i)^2}$
 If the average distance across all saved anchors is below our optimal threshold (**0.3999**), the signature is classified as genuine.
 
 ### 5. Confidence Score Mapping
-**[🔗 View Implementation in `app.py`](./app.py#L42-L52)**
+**[🔗 View Implementation in `app.py`](./app.py#L42-L50)**
 
 **Role & Importance:** 
 Raw Euclidean distances are unintuitive for end-users (bank tellers). This mathematical function maps the unbounded distance into a user-friendly percentage (0% - 99.9%), clearly indicating the system's confidence level in its APPROVED/REJECTED decision.
@@ -220,7 +220,6 @@ The core training engine of our system. To optimize training, we implemented **A
 
 **Role & Importance:** 
 Our robust evaluation script. It runs the trained model on tens of thousands of completely unseen pairs. It automatically calculates the Youden's J statistic from the ROC curve to find the optimal dynamic threshold, and generates a comprehensive Admin Dashboard featuring a Seaborn Confusion Matrix and the final Area Under the Curve (AUC) performance.
-
 ---
 
 ## How to Run Locally
