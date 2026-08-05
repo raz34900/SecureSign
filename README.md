@@ -35,6 +35,57 @@ The portal is divided into three role-based workspaces:
 
 ---
 
+## Datasets & Distribution
+
+ChiSig - A Chinese document signature forgery detection benchmark containing 10,242 images across 500 distinct signed names.
+https://github.com/dskezju/ChiSig 
+
+BHSig260 - Comprising 260 signers, the dataset includes 14,040 signature images.
+https://github.com/DefUs3r/Automatic-Signature-Verification/tree/master
+
+CEDAR -  widely recognized benchmark collection in offline signature verification, containing verified genuine signatures and skilled forgeries. 
+https://www.kaggle.com/datasets/shreelakshmigp/cedardataset
+
+manually collected - In addition to the standard datasets, we manually collected and added signatures from 55 new authors to further diversify and strengthen our database.
+
+The project combines three different signature datasets to create a unified, rich master dataset featuring English, Hindi, Bengali, Hebrew and Chinese signatures.
+
+### Master Dataset Statistics
+| Source | Authors | Total Images |
+| :--- | :---: | :---: |
+| **English (Original)** | 109 | 3,356 |
+| **BHSig260 (Hindi/Bengali)** | 260 | 14,016 |
+| **ChiSig (Chinese)** | 500 | 3,989 |
+| **Total** | **869** | **21,361** |
+
+### Siamese Pairs (Train / Val / Test)
+To train the Siamese Network, the data was strictly isolated (to prevent data leakage) and paired:
+| Split | Number of Pairs |
+| :--- | :---: |
+| **Train** | 53,614 |
+| **Validation** | 12,741 |
+| **Test** | 12,612 |
+
+**Total Pairs:** 78,967 (comprising 157,934 individual images).
+
+---
+
+## Model Architecture Comparison
+
+To determine the most robust approach for offline signature verification, we conducted a direct comparative analysis between two architectures:
+
+### 1. Baseline: Pre-trained ResNet18
+*   Adapted to accept 1-channel (grayscale) images.
+*   Output embedding dimension: 128 (with 0.5 Dropout).
+*   **Limitation:** The significant depth (millions of parameters) caused severe **overfitting**. The model memorized the binary images, driving training loss to near zero while validation loss stagnated early.
+
+### 2. Proposed Model: Custom Lightweight CNN
+*   A tailored architecture consisting of 4 sequential blocks (Conv2d, BatchNorm, ReLU, MaxPool).
+*   Final layers use a higher Dropout of 0.6 for enhanced regularization.
+*   **Advantage:** The reduced parameter count forced the network to learn structural and stylistic features rather than memorizing samples. This eliminated overfitting and drastically improved generalization on unseen data.
+
+---
+
 ## Preprocessing Pipeline in Action
 Before inference, every signature undergoes a strict transformation pipeline using OpenCV to isolate the ink, remove printed lines, and align the signature perfectly:
 
@@ -67,7 +118,6 @@ The core of SecureSign is providing explainable, clear results for bank tellers 
 
 <img width="730" height="430" alt="48caaf69ac30a4ee0f0c3c8721a66b92" src="https://github.com/user-attachments/assets/2f3c208a-71fe-42af-a50a-040ace2aee40" />
 
-
 ---
 
 ## 📊 Analytics & Performance
@@ -79,6 +129,23 @@ The core of SecureSign is providing explainable, clear results for bank tellers 
 ### ROC and Confusion Matrix
 
 <img width="794" height="344" alt="הורדה (1)" src="https://github.com/user-attachments/assets/1ba39fcb-2c32-425f-a005-cee6c03ff7ad" />
+
+---
+
+
+## Final Test Set Results
+
+After training both models using an identical optimized loop (Automatic Mixed Precision + Online Hard Example Mining Contrastive Loss), the optimal threshold was determined using the ROC curve on a completely unseen test set.
+
+| Metric | ResNet18 (Baseline) | Custom CNN (Selected) |
+| :--- | :---: | :---: |
+| **Optimal Threshold** | 0.4042 | **0.3999** |
+| **Accuracy** | 81.22% | **84.32%** |
+| **F1-Score** | 0.8157 | **0.8404** |
+| **ROC AUC** | 0.8983 | **0.9231** |
+
+### Conclusion
+The **Custom Lightweight CNN** was selected as the final production model. It successfully balances high verification accuracy (84.32%), excellent generalization without overfitting, and fast computational efficiency, making it highly reliable for real-time bank verification.
 
 ---
 
