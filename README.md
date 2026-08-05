@@ -107,7 +107,7 @@ Our system utilizes a **Siamese Neural Network** with a custom contrastive loss 
 ## Smart Anchor Extraction
 Our system effortlessly handles bulk enrollments. By uploading a single scanned document containing multiple signatures, the application automatically detects, crops, and extracts each signature into individual verified anchors for the customer's database profile.
 
-<img width="259" height="1014" alt="מאגר" src="https://github.com/user-attachments/assets/aa2029f1-f293-4b26-8444-e82c1533bf7a" />
+<img width="259" height="500" alt="מאגר" src="https://github.com/user-attachments/assets/aa2029f1-f293-4b26-8444-e82c1533bf7a" />
 
 ---
 
@@ -115,6 +115,7 @@ Our system effortlessly handles bulk enrollments. By uploading a single scanned 
 The core of SecureSign is providing explainable, clear results for bank tellers and business branches. The system compares a scanned test signature against all saved database anchors, calculating a final Confidence Score.
 
 <img width="730" height="430" alt="da7d4c3d0526703b614aac8e320ffeac" src="https://github.com/user-attachments/assets/8b796884-dbda-49b1-80d5-8eca2611f4ee" />
+
 
 <img width="730" height="430" alt="48caaf69ac30a4ee0f0c3c8721a66b92" src="https://github.com/user-attachments/assets/2f3c208a-71fe-42af-a50a-040ace2aee40" />
 
