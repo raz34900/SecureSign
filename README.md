@@ -120,7 +120,7 @@ The core of SecureSign is providing explainable, clear results for bank tellers 
 
 ---
 
-## 📊 Analytics & Performance
+## Analytics & Performance
 
 ### Model Learning Curve
 
@@ -156,7 +156,9 @@ The **Custom Lightweight CNN** was selected as the final production model. It su
 #################################################UPLOAD PHOTO################################################
 ---
 
-## 🚀 How to Run Locally
+---
+
+## How to Run Locally
 
 1. Clone this repository:
     ```bash
