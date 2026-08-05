@@ -1,4 +1,3 @@
-# SecureSign
 <div align="center">
   
 # ✍️ SecureSign
@@ -14,7 +13,7 @@
 ---
 
 ## 📖 About The Project
-SecureSign is an advanced Siamese Convolutional Neural Network (CNN) system designed to detect signature forgery in financial institutions. The system provides an end-to-end pipeline, from active active-learning model training to a fully functional multi-role UI for immediate deployment.
+SecureSign is an advanced Siamese Convolutional Neural Network (CNN) system designed to detect signature forgery in financial institutions. The system provides an end-to-end pipeline, from active-learning model training to a fully functional multi-role UI for immediate deployment.
 
 This system was developed as a comprehensive academic capstone project by **Raz and Daniel**.
 
@@ -26,11 +25,16 @@ The portal is divided into three role-based workspaces:
 
 ---
 
-## 🧠 Model Architecture & Pipeline
+## 🛠️ Preprocessing Pipeline in Action
+Before inference, every signature undergoes a strict transformation pipeline using OpenCV to isolate the ink, remove printed lines, and align the signature perfectly:
+
+<img width="1591" height="1635" alt="הורדה (2)" src="https://github.com/user-attachments/assets/e9d14f05-90e3-4ea3-9b67-5d32d5216b94" />
+
+---
+
+## 🧠 Model Architecture
 Our system utilizes a **Siamese Neural Network** with a custom contrastive loss function to calculate the Euclidean distance between signature embeddings. 
 
-**Preprocessing Pipeline:**
-Before inference, every signature undergoes a strict transformation pipeline using OpenCV:
 1.  **Otsu Binarization:** Isolating ink from paper.
 2.  **Morphological Line Removal:** Automatically detecting and erasing printed signature lines.
 3.  **Deskewing & Cropping:** Aligning the signature and cropping out white margins.
@@ -38,24 +42,41 @@ Before inference, every signature undergoes a strict transformation pipeline usi
 
 ---
 
+
+## 📄 Smart Anchor Extraction
+Our system effortlessly handles bulk enrollments. By uploading a single scanned document containing multiple signatures, the application automatically detects, crops, and extracts each signature into individual verified anchors for the customer's database profile.
+
+<img width="713" height="2048" alt="מאגר" src="https://github.com/user-attachments/assets/aa2029f1-f293-4b26-8444-e82c1533bf7a" />
+
+---
+
+## 🎯 Verification Results
+The core of SecureSign is providing explainable, clear results for bank tellers and business branches. The system compares a scanned test signature against all saved database anchors, calculating a final Confidence Score.
+
+<img width="1460" height="862" alt="da7d4c3d0526703b614aac8e320ffeac" src="https://github.com/user-attachments/assets/8b796884-dbda-49b1-80d5-8eca2611f4ee" />
+
+<img width="1460" height="862" alt="48caaf69ac30a4ee0f0c3c8721a66b92" src="https://github.com/user-attachments/assets/2f3c208a-71fe-42af-a50a-040ace2aee40" />
+
+
+---
+
 ## 📊 Analytics & Performance
-*(Replace the placeholder below with the actual Learning Curve graph)*
 
-![Learning Curve](https://via.placeholder.com/800x300.png?text=Drag+and+drop+your+Learning+Curve+Image+Here)
+### Model Learning Curve
 
-*(Replace the placeholder below with the ROC and Confusion Matrix)*
+<img width="1189" height="590" alt="הורדה" src="https://github.com/user-attachments/assets/d5ffe563-a3b7-4590-b853-329a834fd9a1" />
 
-![ROC Curve](https://via.placeholder.com/800x300.png?text=Drag+and+drop+your+ROC+Curve+Image+Here)
+### ROC and Confusion Matrix
+
+<img width="1589" height="690" alt="הורדה (1)" src="https://github.com/user-attachments/assets/1ba39fcb-2c32-425f-a005-cee6c03ff7ad" />
 
 ---
 
 ## 💻 System Interfaces
 
-### The Bank / Admin Interface
-*(Showcase the UI here)*
+### The Bank & Admin Dashboards
 
-![System UI](https://via.placeholder.com/800x400.png?text=Drag+and+drop+a+screenshot+of+the+Bank+or+Admin+Panel+Here)
-
+#################################################UPLOAD PHOTO################################################
 ---
 
 ## 🚀 How to Run Locally
