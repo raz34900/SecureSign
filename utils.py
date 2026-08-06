@@ -75,4 +75,107 @@ class UnifiedSignatureTransform(object):
 
         return Image.fromarray(final_img)
 
-# Keep the rest of utils.py (extract_vertical_anchors, CustomSiameseCNN) exactly as they were!
+# ==========================================
+# 2. Smart Anchor Extraction
+# ==========================================
+def extract_vertical_anchors(image_path, min_area=800):
+    """
+    Extracts signatures that are written one under the other from a single document.
+    """
+    img = cv2.imread(image_path)
+    if img is None:
+        return []
+
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (7, 7), 0)
+    _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    kernel_clean = cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3))
+    clean_thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel_clean, iterations=1)
+
+    kernel_merge = cv2.getStructuringElement(cv2.MORPH_RECT, (100, 15))
+    connected = cv2.morphologyEx(clean_thresh, cv2.MORPH_CLOSE, kernel_merge, iterations=1)
+
+    contours, _ = cv2.findContours(connected, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    bounding_boxes = []
+    img_h, img_w = gray.shape
+
+    for c in contours:
+        x, y, w, h = cv2.boundingRect(c)
+        area = w * h
+        if area > min_area and area < (img_w * img_h * 0.8) and h > 20:
+            bounding_boxes.append((x, y, w, h))
+
+    # Sort boxes from top to bottom
+    bounding_boxes = sorted(bounding_boxes, key=lambda b: b[1])
+
+    extracted_anchors = []
+    for idx, (x, y, w, h) in enumerate(bounding_boxes):
+        pad = 15
+        y1 = max(0, y - pad)
+        y2 = min(gray.shape[0], y + h + pad)
+        x1 = max(0, x - pad)
+        x2 = min(gray.shape[1], x + w + pad)
+
+        roi = gray[y1:y2, x1:x2]
+        pil_img = Image.fromarray(roi).convert('L')
+        extracted_anchors.append(pil_img)
+
+    return extracted_anchors
+
+# ==========================================
+# 3. Custom Siamese CNN Architecture
+# ==========================================
+class CustomSiameseCNN(nn.Module):
+    """
+    A custom, lightweight CNN architecture designed specifically for
+    signature verification to prevent overfitting.
+    """
+    def __init__(self, embedding_dim=128):
+        super(CustomSiameseCNN, self).__init__()
+
+        self.features = nn.Sequential(
+            # Block 1
+            nn.Conv2d(1, 32, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(32),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+
+            # Block 2
+            nn.Conv2d(32, 64, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+
+            # Block 3
+            nn.Conv2d(64, 128, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(128),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+
+            # Block 4
+            nn.Conv2d(128, 256, kernel_size=3, stride=1, padding=1),
+            nn.BatchNorm2d(256),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2)
+        )
+
+        self.fc = nn.Sequential(
+            nn.Linear(256 * 14 * 14, 512),
+            nn.BatchNorm1d(512),
+            nn.ReLU(inplace=True),
+            nn.Dropout(p=0.6),
+            nn.Linear(512, embedding_dim)
+        )
+
+    def forward_once(self, x):
+        x = self.features(x)
+        x = x.view(x.size(0), -1)
+        x = self.fc(x)
+        return x
+
+    def forward(self, input1, input2):
+        output1 = self.forward_once(input1)
+        output2 = self.forward_once(input2)
+        return output1, output2
