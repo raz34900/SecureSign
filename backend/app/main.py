@@ -36,5 +36,7 @@ def create_app(session_factory=None, embedder=None) -> FastAPI:
                 "model_loaded": app.state.embedder is not None}
 
     from backend.app.routers import auth as auth_router          # Task 6
+    from backend.app.routers import customers as customers_router  # Task 7
     app.include_router(auth_router.router)
+    app.include_router(customers_router.router)
     return app
