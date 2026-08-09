@@ -29,12 +29,18 @@ def session_factory():
 
 
 @pytest.fixture
-def app(session_factory, monkeypatch):
+def app(session_factory, monkeypatch, tmp_path):
     monkeypatch.setenv("SS_PII_ENC_KEY", "aa" * 32)
     monkeypatch.setenv("SS_PII_INDEX_KEY", "bb" * 32)
     from backend.app.config import get_settings
     get_settings.cache_clear()
     from backend.app.main import create_app
+
+    import backend.app.routers.customers as customers_router_module
+    customers_router_module.SAMPLES_DIR = str(tmp_path / "samples")
+    from backend.app.services import enrolment as enrolment_service
+    enrolment_service._store.clear()
+
     return create_app(session_factory=session_factory, embedder=FakeEmbedder())
 
 
