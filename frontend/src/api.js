@@ -58,3 +58,7 @@ export function postForm(path, formData) {
     body: formData,
   })
 }
+
+export function del(path) {
+  return request(path, { method: 'DELETE' })
+}

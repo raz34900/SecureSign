@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { postForm, ApiError } from '../api.js'
+import { isClerk } from '../auth.js'
 
 const NATIONAL_ID_PATTERN = /^\d{9}$/
 
@@ -17,6 +18,10 @@ const cameraInput = ref(null)
 const nationalIdTouched = ref(false)
 const nationalIdValid = computed(() => NATIONAL_ID_PATTERN.test(nationalId.value))
 const canSubmit = computed(() => nationalIdValid.value && !!file.value && !pending.value)
+
+const referencesPassedCount = computed(() =>
+  (result.value?.references ?? []).filter((r) => r.passed).length,
+)
 
 function handleFileChange(event) {
   const chosen = event.target.files && event.target.files[0]
@@ -165,6 +170,48 @@ function reset() {
         <p>model: {{ result.model_version }}</p>
         <p>request: {{ result.request_id }}</p>
         <p>verified at: {{ result.verified_at }}</p>
+      </div>
+
+      <div v-if="isClerk && result.references" class="border-t border-gray-200 pt-6 text-left space-y-4">
+        <h3 class="text-sm font-medium text-gray-700">Signature comparison</h3>
+
+        <div class="border-2 border-navy rounded-lg p-2 max-w-xs mx-auto">
+          <img :src="previewUrl" alt="Submitted signature" class="w-full h-auto rounded" />
+          <p class="text-center text-xs text-navy font-medium mt-1">Submitted signature</p>
+        </div>
+
+        <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
+          <div
+            v-for="(anchor, index) in result.references"
+            :key="anchor.reference_id"
+            :class="[
+              'bg-white rounded-lg p-2 border-2',
+              anchor.passed ? 'border-green-500' : 'border-red-500',
+            ]"
+          >
+            <img
+              :src="'data:image/png;base64,' + anchor.image_png_base64"
+              alt="Reference signature anchor"
+              class="w-full h-auto rounded"
+            />
+            <p
+              :class="[
+                'text-center text-xs font-medium mt-1',
+                anchor.passed ? 'text-green-700' : 'text-red-700',
+              ]"
+            >
+              Anchor {{ index + 1 }} — {{ anchor.passed ? 'PASS' : 'FAIL' }}
+              {{ Number(anchor.confidence).toFixed(1) }}%
+            </p>
+            <p class="text-center font-mono text-[10px] text-gray-400">
+              distance: {{ anchor.distance }}
+            </p>
+          </div>
+        </div>
+
+        <p class="text-sm text-gray-600 text-center">
+          {{ referencesPassedCount }} of {{ result.references.length }} anchors passed
+        </p>
       </div>
 
       <button
