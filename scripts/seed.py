@@ -1,5 +1,6 @@
-"""Idempotent seed: operator + one financial org + one subscriber org, one user each.
-Passwords come from SS_SEED_* env vars — never hardcoded."""
+"""Idempotent seed: operator + two financial orgs + two subscriber orgs, one user each.
+Passwords come from SS_SEED_* env vars — never hardcoded. Clerks share the clerk
+password and reps share the verifier password (demo/testing accounts)."""
 import os
 import sys
 
@@ -14,6 +15,8 @@ from backend.app.models_db import Organisation, User
 SEED = [
     ("SecureSign Ltd", "operator", "eng1", "engineer", "SS_SEED_ENGINEER_PASSWORD"),
     ("Bank A", "financial", "clerk1", "clerk", "SS_SEED_CLERK_PASSWORD"),
+    ("Bank B", "financial", "clerk2", "clerk", "SS_SEED_CLERK_PASSWORD"),
+    ("Shop A", "subscriber", "rep2", "verifier", "SS_SEED_VERIFIER_PASSWORD"),
     ("Shop B", "subscriber", "rep1", "verifier", "SS_SEED_VERIFIER_PASSWORD"),
 ]
 
@@ -42,7 +45,7 @@ def main() -> None:
                 db.add(User(org_id=org.id, username=username,
                             password_hash=hash_password(passwords[env]), role=role))
         db.commit()
-    print("seeded: 3 organisations, 3 users")
+    print("seeded: 5 organisations, 5 users")
 
 
 if __name__ == "__main__":
