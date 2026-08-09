@@ -57,7 +57,7 @@ async def upload_card(enrolment_id: str, file: UploadFile, db: Session = Depends
     ok, msg = validate_image_quality(data)
     if not ok:
         raise AppError("INVALID_IMAGE", msg, 422)
-    return {"crops": enrolment.attach_card(enrolment_id, data)}
+    return {"crops": enrolment.attach_card(enrolment_id, data, user.org_id)}
 
 
 @router.post("/{enrolment_id}/references")
@@ -65,7 +65,7 @@ def approve_references(enrolment_id: str, body: ApproveBody, request: Request,
                        db: Session = Depends(get_db),
                        user: CurrentUser = Depends(require_roles("clerk"))) -> dict:
     customer = enrolment.approve(db, request.app.state.embedder, enrolment_id,
-                                 body.crop_ids, SAMPLES_DIR)
+                                 body.crop_ids, SAMPLES_DIR, user.org_id)
     return {"customer_id": customer.id, "reference_count": len(body.crop_ids)}
 
 

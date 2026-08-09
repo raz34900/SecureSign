@@ -42,10 +42,11 @@ def _purge() -> None:
         del _store[key]
 
 
-def _get(enrolment_id: str) -> _Staged:
+def _get(enrolment_id: str, org_id: str) -> _Staged:
     _purge()
     staged = _store.get(enrolment_id)
-    if staged is None:
+    # Org scope check: another org's staged enrolment must look nonexistent (no IDOR oracle).
+    if staged is None or staged.org_id != org_id:
         raise AppError("CUSTOMER_NOT_FOUND", "Enrolment not found or expired.", 404)
     return staged
 
@@ -63,8 +64,8 @@ def stage(db: Session, national_id: str, full_name: str, consent_granted: bool,
     return enrolment_id
 
 
-def attach_card(enrolment_id: str, image_bytes: bytes) -> list[dict]:
-    staged = _get(enrolment_id)
+def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict]:
+    staged = _get(enrolment_id, org_id)
     crops = extract_vertical_anchors(image_bytes)
     if len(crops) < MIN_REFS:
         raise AppError("INSUFFICIENT_SIGNATURES",
@@ -82,8 +83,9 @@ def attach_card(enrolment_id: str, image_bytes: bytes) -> list[dict]:
     return out
 
 
-def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str], samples_dir: str) -> Customer:
-    staged = _get(enrolment_id)
+def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
+            samples_dir: str, org_id: str) -> Customer:
+    staged = _get(enrolment_id, org_id)
     selected = [staged.crops[c] for c in crop_ids if c in staged.crops]
     if not (MIN_REFS <= len(selected) <= MAX_REFS):
         raise AppError("INSUFFICIENT_SIGNATURES",

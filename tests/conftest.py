@@ -51,21 +51,26 @@ def client(app):
 
 @pytest.fixture
 def seeded(session_factory):
-    """3 orgs, 3 users. Password for all: 'pw123456'."""
+    """5 orgs (2 financial, 2 subscriber, operator), 5 users. Password for all: 'pw123456'."""
     with session_factory() as db:
         op = Organisation(name="SecureSign Ltd", type="operator")
         bank = Organisation(name="Bank A", type="financial")
+        bank2 = Organisation(name="Bank B", type="financial")
+        shop2 = Organisation(name="Shop A", type="subscriber")
         shop = Organisation(name="Shop B", type="subscriber")
-        db.add_all([op, bank, shop])
+        db.add_all([op, bank, bank2, shop, shop2])
         db.flush()
         pw = hash_password("pw123456")
         db.add_all([
             User(org_id=bank.id, username="clerk1", password_hash=pw, role="clerk"),
+            User(org_id=bank2.id, username="clerk2", password_hash=pw, role="clerk"),
             User(org_id=shop.id, username="rep1", password_hash=pw, role="verifier"),
+            User(org_id=shop2.id, username="rep2", password_hash=pw, role="verifier"),
             User(org_id=op.id, username="eng1", password_hash=pw, role="engineer"),
         ])
         db.commit()
-        return {"op": op.id, "bank": bank.id, "shop": shop.id}
+        return {"op": op.id, "bank": bank.id, "bank2": bank2.id,
+                "shop": shop.id, "shop2": shop2.id}
 
 
 def login(client, org_name: str, username: str, password: str = "pw123456"):
