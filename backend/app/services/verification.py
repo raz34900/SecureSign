@@ -1,4 +1,5 @@
 """Verify flow: sanity → lookup → embed → mean distance → decide → persist (one txn)."""
+import base64
 import io
 
 import numpy as np
@@ -7,15 +8,34 @@ from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
 from backend.app.errors import AppError
+from backend.app.models_db import ReferenceSignature
 from backend.app.repositories import audit, customers as customers_repo, references as references_repo
 from backend.app.repositories import verifications as verifications_repo
 from backend.app.security.crypto import blind_index
-from signature_core.decision import decide
+from signature_core.decision import calculate_confidence, decide
 from signature_core.quality import validate_image_quality
 
 
+def _reference_views(refs: list[ReferenceSignature], distances: list[float],
+                     threshold: float) -> list[dict]:
+    """Per-anchor breakdown for the enrolling side of the house (clerks)."""
+    views = []
+    for ref, distance in zip(refs, distances):
+        try:
+            with open(ref.image_path, "rb") as f:
+                image = base64.b64encode(f.read()).decode()
+        except OSError:
+            continue  # missing file: skip, never 500 the whole verification
+        views.append({"reference_id": ref.id,
+                      "image_png_base64": image,
+                      "distance": round(distance, 4),
+                      "passed": distance < threshold,
+                      "confidence": round(calculate_confidence(distance, threshold), 1)})
+    return views
+
+
 def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
-        org_id: str, user_id: str) -> dict:
+        org_id: str, user_id: str, include_references: bool = False) -> dict:
     settings = get_settings()
 
     ok, quality_msg = validate_image_quality(image_bytes)
@@ -33,8 +53,9 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
 
     query_img = Image.open(io.BytesIO(image_bytes)).convert("L")
     query_vec = embedder.embed(query_img)
-    refs = references_repo.embeddings_for(db, customer.id)
-    distances = [float(np.linalg.norm(ref - query_vec)) for ref in refs]
+    refs = references_repo.all_for(db, customer.id)
+    distances = [float(np.linalg.norm(np.frombuffer(ref.embedding, dtype=np.float32) - query_vec))
+                 for ref in refs]
     result = decide(distances, settings.threshold)
 
     row = verifications_repo.add(db, customer_id=customer.id, org_id=org_id, user_id=user_id,
@@ -46,7 +67,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
                 resource_type="customer", resource_id=customer.id, outcome="allowed",
                 detail={"decision": result.verdict, "verification_id": row.id})
     # audit.write commits — verification row + audit row land together.
-    return {
+    response = {
         "request_id": row.id,
         "national_id": national_id,
         "verdict": result.verdict,
@@ -56,3 +77,9 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         "model_version": settings.model_version,
         "verified_at": row.created_at.isoformat() + "Z",
     }
+    if include_references:
+        response["references"] = _reference_views(refs, distances, result.threshold)
+        audit.write(db, user_id=user_id, org_id=org_id, action="view_references",
+                    resource_type="customer", resource_id=customer.id, outcome="allowed",
+                    detail={"verification_id": row.id})
+    return response

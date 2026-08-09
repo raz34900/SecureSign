@@ -1,5 +1,9 @@
 """Two-step enrolment with in-memory staging (15-min TTL).
-Nothing touches the DB until approve() — consent + customer + references commit atomically."""
+Nothing touches the DB until approve() — consent + customer + references commit atomically.
+
+Two modes: a national id nobody holds yet enrols a new customer; a national id already
+on file appends references owned by the caller's org, but only after every submitted
+signature is verified against the customer's existing references (anti-impersonation)."""
 import base64
 import io
 import os
@@ -7,7 +11,9 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
+import numpy as np
 from PIL import Image
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -17,6 +23,7 @@ from backend.app.models_db import ConsentRecord, Customer
 from backend.app.repositories import audit, customers as customers_repo, references as references_repo
 from backend.app.security.crypto import blind_index, encrypt_pii
 from signature_core.anchors import extract_vertical_anchors
+from signature_core.decision import decide
 
 _TTL_SECONDS = 15 * 60
 MIN_REFS, MAX_REFS = 5, 10
@@ -29,6 +36,7 @@ class _Staged:
     consent_method: str
     org_id: str
     user_id: str
+    target_customer_id: str | None = None  # set => append mode
     crops: dict[str, Image.Image] = field(default_factory=dict)
     created_at: float = field(default_factory=time.time)
 
@@ -52,16 +60,16 @@ def _get(enrolment_id: str, org_id: str) -> _Staged:
 
 
 def stage(db: Session, national_id: str, full_name: str, consent_granted: bool,
-          consent_method: str, org_id: str, user_id: str) -> str:
+          consent_method: str, org_id: str, user_id: str) -> dict:
     if not consent_granted:
         raise AppError("CONSENT_REQUIRED", "Customer consent must be recorded before enrolment.", 422)
     settings = get_settings()
-    if customers_repo.find_by_blind_index(db, blind_index(national_id, settings.pii_index_key)):
-        raise AppError("DUPLICATE_CUSTOMER", "A customer with this identifier already exists.", 409)
+    existing = customers_repo.find_by_blind_index(db, blind_index(national_id, settings.pii_index_key))
     enrolment_id = str(uuid.uuid4())
     _store[enrolment_id] = _Staged(national_id=national_id, full_name=full_name,
-                                   consent_method=consent_method, org_id=org_id, user_id=user_id)
-    return enrolment_id
+                                   consent_method=consent_method, org_id=org_id, user_id=user_id,
+                                   target_customer_id=existing.id if existing else None)
+    return {"enrolment_id": enrolment_id, "mode": "append" if existing else "new"}
 
 
 def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict]:
@@ -87,6 +95,28 @@ def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
             samples_dir: str, org_id: str) -> Customer:
     staged = _get(enrolment_id, org_id)
     selected = [staged.crops[c] for c in crop_ids if c in staged.crops]
+    if staged.target_customer_id is None:
+        customer = _approve_new(db, embedder, staged, selected, samples_dir)
+    else:
+        customer = _approve_append(db, embedder, staged, selected, samples_dir)
+    del _store[enrolment_id]
+    return customer
+
+
+def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_dir: str,
+                 crops: list[Image.Image], vectors: list[np.ndarray] | None = None) -> None:
+    os.makedirs(os.path.join(samples_dir, customer_id), exist_ok=True)
+    for index, crop in enumerate(crops):
+        embedding = vectors[index] if vectors is not None else embedder.embed(crop)
+        ref = references_repo.add(db, customer_id, org_id, image_path="", embedding=embedding)
+        db.flush()
+        path = os.path.join(samples_dir, customer_id, f"{ref.id}.png")
+        crop.save(path)
+        ref.image_path = path
+
+
+def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Image],
+                 samples_dir: str) -> Customer:
     if not (MIN_REFS <= len(selected) <= MAX_REFS):
         raise AppError("INSUFFICIENT_SIGNATURES",
                        f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
@@ -102,18 +132,59 @@ def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
         db.flush()
         db.add(ConsentRecord(customer_id=customer.id, org_id=staged.org_id,
                              method=staged.consent_method))
-        os.makedirs(os.path.join(samples_dir, customer.id), exist_ok=True)
-        for crop in selected:
-            ref = references_repo.add(db, customer.id, image_path="", embedding=embedder.embed(crop))
-            db.flush()
-            path = os.path.join(samples_dir, customer.id, f"{ref.id}.png")
-            crop.save(path)
-            ref.image_path = path
+        _store_crops(db, embedder, customer.id, staged.org_id, samples_dir, selected)
         db.commit()
     except IntegrityError:
         db.rollback()
         raise AppError("DUPLICATE_CUSTOMER", "A customer with this identifier already exists.", 409)
     audit.write(db, user_id=staged.user_id, org_id=staged.org_id, action="enrol",
                 resource_type="customer", resource_id=customer.id, outcome="allowed")
-    del _store[enrolment_id]
+    return customer
+
+
+def _approve_append(db: Session, embedder, staged: _Staged, selected: list[Image.Image],
+                    samples_dir: str) -> Customer:
+    customer = customers_repo.get_active(db, staged.target_customer_id)
+    if customer is None:
+        raise AppError("CUSTOMER_NOT_FOUND", "Customer not found.", 404)
+
+    owned = references_repo.own_count(db, customer.id, staged.org_id)
+    if not selected or (owned == 0 and len(selected) < MIN_REFS):
+        raise AppError("INSUFFICIENT_SIGNATURES",
+                       f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
+    if owned + len(selected) > MAX_REFS:
+        raise AppError("TOO_MANY_SIGNATURES",
+                       f"An organisation may hold at most {MAX_REFS} reference signatures "
+                       "for a customer.", 422)
+
+    settings = get_settings()
+    existing = references_repo.embeddings_for(db, customer.id)
+    vectors, worst, mismatch = [], 0.0, False
+    for crop in selected:
+        vector = embedder.embed(crop)
+        vectors.append(vector)
+        if not existing:
+            continue
+        result = decide([float(np.linalg.norm(ref - vector)) for ref in existing], settings.threshold)
+        worst = max(worst, result.distance)
+        mismatch = mismatch or result.verdict == "FRAUD"
+
+    if mismatch:
+        audit.write(db, user_id=staged.user_id, org_id=staged.org_id, action="enrol_append",
+                    resource_type="customer", resource_id=customer.id, outcome="denied",
+                    detail={"reason": "SIGNATURE_MISMATCH", "worst_distance": round(worst, 4)})
+        raise AppError("SIGNATURE_MISMATCH",
+                       "Submitted signatures do not match the registered customer.", 409)
+
+    _store_crops(db, embedder, customer.id, staged.org_id, samples_dir, selected, vectors)
+    has_consent = db.execute(select(ConsentRecord.id).where(
+        ConsentRecord.customer_id == customer.id,
+        ConsentRecord.org_id == staged.org_id)).first() is not None
+    if not has_consent:
+        db.add(ConsentRecord(customer_id=customer.id, org_id=staged.org_id,
+                             method=staged.consent_method))
+    db.commit()
+    audit.write(db, user_id=staged.user_id, org_id=staged.org_id, action="enrol_append",
+                resource_type="customer", resource_id=customer.id, outcome="allowed",
+                detail={"appended": len(selected), "worst_distance": round(worst, 4)})
     return customer

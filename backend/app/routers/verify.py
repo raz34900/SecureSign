@@ -24,4 +24,5 @@ async def verify(request: Request,
     return await run_in_threadpool(
         verification.run, db, request.app.state.embedder,
         national_id=national_id, image_bytes=data,
-        org_id=user.org_id, user_id=user.user_id)
+        org_id=user.org_id, user_id=user.user_id,
+        include_references=user.role == "clerk")
