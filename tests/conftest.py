@@ -6,7 +6,9 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlalchemy.pool import StaticPool
 
+from backend.app.auth.passwords import hash_password
 from backend.app.db import Base, make_engine, make_session_factory
+from backend.app.models_db import Organisation, User
 
 
 class FakeEmbedder:
@@ -39,3 +41,26 @@ def app(session_factory, monkeypatch):
 @pytest.fixture
 def client(app):
     return TestClient(app)
+
+
+@pytest.fixture
+def seeded(session_factory):
+    """3 orgs, 3 users. Password for all: 'pw123456'."""
+    with session_factory() as db:
+        op = Organisation(name="SecureSign Ltd", type="operator")
+        bank = Organisation(name="Bank A", type="financial")
+        shop = Organisation(name="Shop B", type="subscriber")
+        db.add_all([op, bank, shop])
+        db.flush()
+        pw = hash_password("pw123456")
+        db.add_all([
+            User(org_id=bank.id, username="clerk1", password_hash=pw, role="clerk"),
+            User(org_id=shop.id, username="rep1", password_hash=pw, role="verifier"),
+            User(org_id=op.id, username="eng1", password_hash=pw, role="engineer"),
+        ])
+        db.commit()
+        return {"op": op.id, "bank": bank.id, "shop": shop.id}
+
+
+def login(client, org_name: str, username: str, password: str = "pw123456"):
+    return client.post("/auth/login", json={"org_name": org_name, "username": username, "password": password})
