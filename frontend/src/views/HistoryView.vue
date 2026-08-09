@@ -68,7 +68,7 @@ onMounted(async () => {
                 {{ v.verdict }}
               </span>
             </td>
-            <td class="px-4 py-3">{{ v.confidence }}%</td>
+            <td class="px-4 py-3">{{ v.confidence.toFixed(1) }}%</td>
             <td class="px-4 py-3 font-mono">{{ formatDistance(v.distance) }}</td>
             <td class="px-4 py-3">{{ v.model_version }}</td>
             <td class="px-4 py-3">{{ formatDate(v.created_at) }}</td>
