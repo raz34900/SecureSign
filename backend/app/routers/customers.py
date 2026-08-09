@@ -1,12 +1,16 @@
+import base64
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Request, UploadFile
 from pydantic import BaseModel, StringConstraints
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.auth.deps import CurrentUser, get_db, require_roles
 from backend.app.config import get_settings
 from backend.app.errors import AppError
+from backend.app.models_db import ReferenceSignature
+from backend.app.repositories import audit
 from backend.app.repositories import customers as customers_repo
 from backend.app.services import enrolment
 from signature_core.quality import validate_image_quality
@@ -77,3 +81,24 @@ def get_customer(customer_id: str, db: Session = Depends(get_db),
         raise AppError("CUSTOMER_NOT_FOUND", "Customer not found.", 404)
     return {"customer_id": customer.id, "full_name": customer.full_name,
             "status": customer.status, "created_at": customer.created_at.isoformat()}
+
+
+@router.get("/{customer_id}/references")
+def get_references(customer_id: str, db: Session = Depends(get_db),
+                   user: CurrentUser = Depends(require_roles("clerk"))) -> dict:
+    customer = customers_repo.get_scoped(db, customer_id, user.org_id)
+    if customer is None:
+        raise AppError("CUSTOMER_NOT_FOUND", "Customer not found.", 404)
+    rows = db.execute(select(ReferenceSignature).where(
+        ReferenceSignature.customer_id == customer.id)).scalars().all()
+    images = []
+    for ref in rows:
+        try:
+            with open(ref.image_path, "rb") as f:
+                images.append({"reference_id": ref.id,
+                               "image_png_base64": base64.b64encode(f.read()).decode()})
+        except OSError:
+            continue  # missing file: skip, never 500 the whole view
+    audit.write(db, user_id=user.user_id, org_id=user.org_id, action="view_references",
+                resource_type="customer", resource_id=customer.id, outcome="allowed")
+    return {"customer_id": customer.id, "references": images}
