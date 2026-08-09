@@ -23,6 +23,7 @@ const fullNameValid = computed(() => fullName.value.trim().length > 0)
 const step1Valid = computed(() => nationalIdValid.value && fullNameValid.value && consentGranted.value)
 
 const enrolmentId = ref(null)
+const enrolMode = ref(null) // 'new' | 'append'
 
 async function submitStep1() {
   if (!step1Valid.value || step1Submitting.value) return
@@ -35,13 +36,10 @@ async function submitStep1() {
       consent: { granted: consentGranted.value, method: consentMethod.value },
     })
     enrolmentId.value = res.enrolment_id
+    enrolMode.value = res.mode
     step.value = 2
   } catch (err) {
-    if (err instanceof ApiError && err.code === 'DUPLICATE_CUSTOMER') {
-      step1Error.value = 'A customer with this national ID is already enrolled.'
-    } else {
-      step1Error.value = err.message || 'Failed to start enrolment.'
-    }
+    step1Error.value = err.message || 'Failed to start enrolment.'
   } finally {
     step1Submitting.value = false
   }
@@ -88,7 +86,7 @@ async function uploadCard() {
 }
 
 // --- Step 3: approve crops ---
-const step3Error = ref('')
+const step3Error = ref(null) // { level: 'warning' | 'error', message, note? }
 const step3Submitting = ref(false)
 
 const selectedCount = computed(() => crops.value.filter((c) => c.selected).length)
@@ -96,20 +94,29 @@ const canApprove = computed(() => selectedCount.value >= 5 && selectedCount.valu
 
 async function approveReferences() {
   if (!canApprove.value || step3Submitting.value) return
-  step3Error.value = ''
+  step3Error.value = null
   step3Submitting.value = true
   try {
     const cropIds = crops.value.filter((c) => c.selected).map((c) => c.crop_id)
     const res = await postJson(`/customers/${enrolmentId.value}/references`, { crop_ids: cropIds })
-    saveRecentCustomer(res.customer_id, fullName.value.trim())
+    saveRecentCustomer(res.customer_id, nationalId.value, fullName.value.trim())
     successCustomerId.value = res.customer_id
     successReferenceCount.value = res.reference_count
+    successMode.value = enrolMode.value
     step.value = 'success'
   } catch (err) {
     if (err instanceof ApiError && err.code === 'CUSTOMER_NOT_FOUND') {
       expireAndRestart()
+    } else if (err instanceof ApiError && err.code === 'SIGNATURE_MISMATCH') {
+      step3Error.value = {
+        level: 'error',
+        message: err.message || 'Submitted signatures do not match the registered customer.',
+        note: 'This protects the registry against impersonation.',
+      }
+    } else if (err instanceof ApiError && err.code === 'TOO_MANY_SIGNATURES') {
+      step3Error.value = { level: 'warning', message: err.message || 'Too many signatures selected.' }
     } else {
-      step3Error.value = err.message || 'Failed to approve references.'
+      step3Error.value = { level: 'error', message: err.message || 'Failed to approve references.' }
     }
   } finally {
     step3Submitting.value = false
@@ -119,6 +126,7 @@ async function approveReferences() {
 // --- Success ---
 const successCustomerId = ref('')
 const successReferenceCount = ref(0)
+const successMode = ref(null) // 'new' | 'append'
 const copied = ref(false)
 
 async function copyCustomerId() {
@@ -131,7 +139,7 @@ async function copyCustomerId() {
   }
 }
 
-function saveRecentCustomer(customerId, fullNameValue) {
+function saveRecentCustomer(customerId, nationalIdValue, fullNameValue) {
   const key = 'ss_recent_customers'
   let list = []
   try {
@@ -140,7 +148,12 @@ function saveRecentCustomer(customerId, fullNameValue) {
   } catch {
     list = []
   }
-  const entry = { customer_id: customerId, full_name: fullNameValue, at: new Date().toISOString() }
+  const entry = {
+    customer_id: customerId,
+    national_id: nationalIdValue,
+    full_name: fullNameValue,
+    at: new Date().toISOString(),
+  }
   list = [entry, ...list].slice(0, 20)
   localStorage.setItem(key, JSON.stringify(list))
 }
@@ -160,14 +173,16 @@ function resetWizard() {
   consentMethod.value = 'signed_form'
   step1Error.value = ''
   enrolmentId.value = null
+  enrolMode.value = null
   if (cardPreviewUrl.value) URL.revokeObjectURL(cardPreviewUrl.value)
   cardFile.value = null
   cardPreviewUrl.value = ''
   step2Error.value = null
   crops.value = []
-  step3Error.value = ''
+  step3Error.value = null
   successCustomerId.value = ''
   successReferenceCount.value = 0
+  successMode.value = null
 }
 
 function enrolAnother() {
@@ -189,6 +204,13 @@ function stepCircleClass(n) {
 
     <div v-if="expiredMessage" class="mb-6 rounded-lg border border-red-400 bg-red-50 text-red-800 px-4 py-3">
       {{ expiredMessage }}
+    </div>
+
+    <div
+      v-if="enrolMode === 'append' && (step === 2 || step === 3)"
+      class="mb-6 rounded-lg border border-navy/30 bg-navy/5 text-navy px-4 py-3 text-sm"
+    >
+      Customer already registered - new signatures will be verified against the registered references before acceptance.
     </div>
 
     <div v-if="step !== 'success'" class="flex items-center justify-center gap-3 mb-8">
@@ -329,8 +351,15 @@ function stepCircleClass(n) {
         </label>
       </div>
 
-      <div v-if="step3Error" class="rounded-lg border border-red-400 bg-red-50 text-red-800 px-4 py-3 text-sm">
-        {{ step3Error }}
+      <div
+        v-if="step3Error"
+        :class="step3Error.level === 'warning'
+          ? 'border-amber-400 bg-amber-50 text-amber-800'
+          : 'border-red-400 bg-red-50 text-red-800'"
+        class="rounded-lg border px-4 py-3 text-sm space-y-1"
+      >
+        <p>{{ step3Error.message }}</p>
+        <p v-if="step3Error.note" class="font-medium">{{ step3Error.note }}</p>
       </div>
 
       <button
@@ -350,7 +379,9 @@ function stepCircleClass(n) {
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
-      <h2 class="text-xl font-bold text-navy">Customer enrolled</h2>
+      <h2 class="text-xl font-bold text-navy">
+        {{ successMode === 'append' ? 'Signatures appended to existing customer' : 'New customer enrolled' }}
+      </h2>
 
       <div class="flex items-center justify-center gap-2">
         <code class="bg-gray-100 rounded px-3 py-1 text-sm">{{ successCustomerId }}</code>
