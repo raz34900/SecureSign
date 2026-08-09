@@ -10,6 +10,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import CustomSiameseCNN, UnifiedSignatureTransform
 
+
 def test_verification_latency():
     print("Loading model and preparing test environment...")
     device = torch.device('cpu')
