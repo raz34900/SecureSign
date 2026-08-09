@@ -7,6 +7,7 @@ from PIL import Image
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from shared_ui import validate_image_quality
 
+
 class MockUploadedFile:
     """A helper class to simulate Streamlit's file_uploader object."""
     def __init__(self, image):
@@ -17,6 +18,7 @@ class MockUploadedFile:
         
     def getvalue(self):
         return self.img_byte_arr
+
 
 def test_empty_document_rejection():
     print("Running Equivalence Class test: EC-4 (Empty Document)...")

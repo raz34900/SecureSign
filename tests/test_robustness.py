@@ -10,6 +10,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils import CustomSiameseCNN, UnifiedSignatureTransform
 from shared_ui import calculate_confidence
 
+
 def test_scale_and_rotation_robustness():
     print("Loading model for robustness test (NFR-04)...")
     device = torch.device('cpu')
