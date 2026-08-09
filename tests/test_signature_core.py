@@ -50,3 +50,56 @@ def test_decide_valid_and_fraud():
     assert d.threshold == THRESHOLD
     # strict <: exactly at threshold is FRAUD
     assert decide([THRESHOLD]).verdict == "FRAUD"
+
+
+import io
+
+from signature_core.anchors import extract_vertical_anchors
+from signature_core.embed import Embedder
+from signature_core.quality import validate_image_quality
+
+
+def make_specimen_card(n: int = 6) -> bytes:
+    card = Image.new("L", (800, 1200), 255)
+    d = ImageDraw.Draw(card)
+    for i in range(n):
+        y = 80 + i * 180
+        d.line([(150, y), (300, y + 40), (450, y - 10), (650, y + 30)], fill=0, width=6)
+    buf = io.BytesIO()
+    card.convert("RGB").save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+def png_bytes(img: Image.Image) -> bytes:
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def test_anchor_extraction_counts_stacked_signatures():
+    crops = extract_vertical_anchors(make_specimen_card(6))
+    assert 5 <= len(crops) <= 7
+
+
+def test_anchor_extraction_garbage_bytes():
+    assert extract_vertical_anchors(b"not an image") == []
+
+
+def test_quality_rejects_blank_and_accepts_signature():
+    ok, _ = validate_image_quality(png_bytes(Image.new("L", (300, 200), 255)))
+    assert not ok
+    ok, msg = validate_image_quality(png_bytes(make_signature()))
+    assert ok and msg == "Valid"
+
+
+def test_quality_rejects_dark():
+    ok, _ = validate_image_quality(png_bytes(Image.new("L", (300, 200), 10)))
+    assert not ok
+
+
+def test_embedder_shape_and_determinism():
+    emb = Embedder(CustomSiameseCNN())  # random weights fine for shape test
+    v1 = emb.embed(make_signature())
+    v2 = emb.embed(make_signature())
+    assert v1.shape == (128,) and v1.dtype == np.float32
+    assert np.allclose(v1, v2)
