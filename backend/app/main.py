@@ -35,4 +35,6 @@ def create_app(session_factory=None, embedder=None) -> FastAPI:
         return {"status": "ok", "model_version": settings.model_version,
                 "model_loaded": app.state.embedder is not None}
 
+    from backend.app.routers import auth as auth_router          # Task 6
+    app.include_router(auth_router.router)
     return app
