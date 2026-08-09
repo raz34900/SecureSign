@@ -37,6 +37,10 @@ def create_app(session_factory=None, embedder=None) -> FastAPI:
 
     from backend.app.routers import auth as auth_router          # Task 6
     from backend.app.routers import customers as customers_router  # Task 7
+    from backend.app.routers import verify as verify_router        # Task 8
+    # from backend.app.routers import history as history_router      # Task 9
     app.include_router(auth_router.router)
     app.include_router(customers_router.router)
+    app.include_router(verify_router.router)
+    # app.include_router(history_router.router)
     return app
