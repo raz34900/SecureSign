@@ -1,0 +1,38 @@
+import logging
+
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
+
+log = logging.getLogger("securesign")
+
+
+class AppError(Exception):
+    def __init__(self, code: str, message: str, status: int) -> None:
+        self.code, self.message, self.status = code, message, status
+
+
+def _envelope(status: int, code: str, message: str) -> JSONResponse:
+    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+
+
+def install_error_handlers(app: FastAPI) -> None:
+    @app.exception_handler(AppError)
+    async def app_error(_: Request, exc: AppError) -> JSONResponse:
+        return _envelope(exc.status, exc.code, exc.message)
+
+    @app.exception_handler(StarletteHTTPException)
+    async def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
+        code = {401: "AUTH_REQUIRED", 403: "FORBIDDEN", 404: "NOT_FOUND",
+                413: "PAYLOAD_TOO_LARGE"}.get(exc.status_code, "HTTP_ERROR")
+        return _envelope(exc.status_code, code, str(exc.detail))
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
+        return _envelope(422, "INVALID_INPUT", "Request validation failed.")
+
+    @app.exception_handler(Exception)
+    async def internal_error(_: Request, exc: Exception) -> JSONResponse:
+        log.exception("internal error")  # full detail server-side only (book 10.1.5)
+        return _envelope(500, "INTERNAL", "An internal error occurred.")
