@@ -61,6 +61,7 @@ class ReferenceSignature(Base):
     __tablename__ = "reference_signatures"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     customer_id: Mapped[str] = mapped_column(ForeignKey("customers.id"))
+    org_id: Mapped[str] = mapped_column(ForeignKey("organisations.id"))  # owning org
     image_path: Mapped[str] = mapped_column(String(255))
     embedding: Mapped[bytes] = mapped_column(LargeBinary)  # 128 float32 = 512 bytes
     created_at: Mapped[datetime] = mapped_column(default=_now)

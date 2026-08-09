@@ -11,13 +11,13 @@ def enrol_body(nid: str = "123456780", granted: bool = True) -> dict:
             "consent": {"granted": granted, "method": "signed_form"}}
 
 
-def do_full_enrolment(client, nid: str = "123456780") -> str:
+def do_full_enrolment(client, nid: str = "123456780", card: bytes | None = None) -> str:
     """Returns customer_id. Assumes clerk already logged in."""
     r = client.post("/customers", json=enrol_body(nid))
     assert r.status_code == 200, r.text
     eid = r.json()["enrolment_id"]
     r = client.post(f"/customers/{eid}/card",
-                    files={"file": ("card.jpg", make_specimen_card(6), "image/jpeg")})
+                    files={"file": ("card.jpg", card or make_specimen_card(6), "image/jpeg")})
     assert r.status_code == 200, r.text
     crop_ids = [c["crop_id"] for c in r.json()["crops"]][:6]
     r = client.post(f"/customers/{eid}/references", json={"crop_ids": crop_ids})
@@ -51,12 +51,23 @@ def test_full_enrolment_happy_path(client, seeded, session_factory):
         assert db.query(ConsentRecord).filter_by(customer_id=cust_id).count() == 1
 
 
-def test_duplicate_customer(client, seeded):
+def test_existing_national_id_stages_append_mode(client, seeded):
+    """A second enrolment of a known identifier is no longer a conflict: it stages an
+    append, and the submitted signatures are checked against the existing references."""
     login(client, "Bank A", "clerk1")
     do_full_enrolment(client, "123456780")
     r = client.post("/customers", json=enrol_body("123456780"))
-    assert r.status_code == 409
-    assert r.json()["error"]["code"] == "DUPLICATE_CUSTOMER"
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["mode"] == "append"
+    assert body["enrolment_id"]
+
+
+def test_new_national_id_stages_new_mode(client, seeded):
+    login(client, "Bank A", "clerk1")
+    r = client.post("/customers", json=enrol_body("123456779"))
+    assert r.status_code == 200, r.text
+    assert r.json()["mode"] == "new"
 
 
 def test_card_with_too_few_signatures(client, seeded):
