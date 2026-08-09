@@ -1,11 +1,35 @@
 services:
+  frontend:
+    build:
+      context: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
   api:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+    expose:
+      - "8000"
     ports:
-      - "8000:8000"
+      - "8000:8000"   # direct API access for dev/tests; remove for prod
     env_file:
       - ../.env
     volumes:
       - ../data:/srv/securesign/data
+
+  # db: enable when moving off SQLite — then set
+  # SS_DATABASE_URL=postgresql+psycopg://securesign:${POSTGRES_PASSWORD}@db:5432/securesign
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_DB: securesign
+  #     POSTGRES_USER: securesign
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+  #   volumes:
+  #     - pgdata:/var/lib/postgresql/data
+
+# volumes:
+#   pgdata:
