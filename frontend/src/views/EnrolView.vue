@@ -1,6 +1,15 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { postJson, postForm, ApiError } from '../api.js'
+import { assessCapture } from '../capture.js'
+import CaptureGuide from '../components/CaptureGuide.vue'
+
+/** Most references a customer may hold. */
+const MAX_REFERENCES = 10
+
+/** A brand new customer needs a full card. An append only needs one more signature. */
+const MIN_REFERENCES_NEW = 5
+const MIN_REFERENCES_APPEND = 1
 
 const STEPS = [
   { n: 1, label: 'Details' },
@@ -51,6 +60,9 @@ const cardFile = ref(null)
 const cardPreviewUrl = ref('')
 const step2Error = ref(null) // { level: 'warning' | 'error', message }
 const step2Uploading = ref(false)
+const cardFileInput = ref(null)
+
+const captureNotice = ref(null) // { level: 'good' | 'warning' | 'error', title, message }
 
 function onFileSelected(e) {
   const file = e.target.files && e.target.files[0]
@@ -59,6 +71,19 @@ function onFileSelected(e) {
   cardFile.value = file
   cardPreviewUrl.value = URL.createObjectURL(file)
   step2Error.value = null
+  assessFile(file)
+}
+
+/* A second pick while the first reading is still running wins. */
+async function assessFile(file) {
+  captureNotice.value = null
+  const verdict = await assessCapture(file)
+  if (cardFile.value !== file) return
+  captureNotice.value = verdict
+}
+
+function reopenFilePicker() {
+  cardFileInput.value?.click()
 }
 
 const crops = ref([])
@@ -91,7 +116,26 @@ const step3Error = ref(null) // { level: 'warning' | 'error', message, note? }
 const step3Submitting = ref(false)
 
 const selectedCount = computed(() => crops.value.filter((c) => c.selected).length)
-const canApprove = computed(() => selectedCount.value >= 5 && selectedCount.value <= 10)
+
+const minReferences = computed(() =>
+  enrolMode.value === 'append' ? MIN_REFERENCES_APPEND : MIN_REFERENCES_NEW,
+)
+
+const canApprove = computed(
+  () => selectedCount.value >= minReferences.value && selectedCount.value <= MAX_REFERENCES,
+)
+
+const selectionRule = computed(() =>
+  minReferences.value === 1
+    ? 'need at least 1'
+    : `need ${minReferences.value} to ${MAX_REFERENCES}`,
+)
+
+const cardGuidance = computed(() =>
+  minReferences.value === 1
+    ? 'Photograph the signature on its own, filling the frame. One clear signature is enough for a customer already on file.'
+    : `Card must contain ${minReferences.value} to ${MAX_REFERENCES} signatures, one below the other, with clear spacing.`,
+)
 
 function toggleCrop(crop) {
   crop.selected = !crop.selected
@@ -200,6 +244,7 @@ function expireAndRestart() {
   cardFile.value = null
   cardPreviewUrl.value = ''
   step2Error.value = null
+  captureNotice.value = null
   crops.value = []
   step3Error.value = null
 }
@@ -218,6 +263,7 @@ function resetWizard() {
   cardFile.value = null
   cardPreviewUrl.value = ''
   step2Error.value = null
+  captureNotice.value = null
   crops.value = []
   step3Error.value = null
   successCustomerId.value = ''
@@ -257,9 +303,9 @@ function connectorClass(n) {
 }
 
 function bannerClass(level) {
-  return level === 'warning'
-    ? 'border-warning-border bg-warning-surface text-warning'
-    : 'border-danger-border bg-danger-surface text-danger'
+  if (level === 'good') return 'border-valid-border bg-valid-surface text-valid'
+  if (level === 'warning') return 'border-warning-border bg-warning-surface text-warning'
+  return 'border-danger-border bg-danger-surface text-danger'
 }
 </script>
 
@@ -359,13 +405,14 @@ function bannerClass(level) {
     <!-- Step 2: Specimen card -->
     <div v-else-if="step === 2" class="bg-surface border border-border rounded-lg shadow-sm p-6 space-y-4">
       <p class="text-sm text-ink-muted">
-        Card must contain 5-10 signatures, one below the other, with clear spacing
+        {{ cardGuidance }}
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <label class="flex flex-col min-h-11 justify-center">
           <span class="block text-sm font-medium text-ink-muted mb-1">Upload file</span>
           <input
+            ref="cardFileInput"
             type="file"
             accept="image/*"
             class="w-full text-sm"
@@ -384,8 +431,34 @@ function bannerClass(level) {
         </label>
       </div>
 
+      <details class="rounded-lg border border-border bg-surface">
+        <summary class="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium text-ink marker:text-ink-subtle">
+          How to photograph a signature
+        </summary>
+        <div class="border-t border-border px-4 py-3">
+          <CaptureGuide />
+        </div>
+      </details>
+
       <div v-if="cardPreviewUrl" class="rounded-lg border border-border p-2">
         <img :src="cardPreviewUrl" alt="Specimen card preview" class="max-h-80 mx-auto rounded" />
+      </div>
+
+      <!-- Advice about the picture, never a block on uploading it. -->
+      <div
+        v-if="captureNotice"
+        class="rounded-lg border px-4 py-3 text-sm space-y-1"
+        :class="bannerClass(captureNotice.level)"
+      >
+        <p class="font-semibold">{{ captureNotice.title }}</p>
+        <p class="text-ink">{{ captureNotice.message }}</p>
+        <button
+          type="button"
+          class="mt-1 min-h-11 px-3 rounded-lg border border-border-strong bg-surface text-ink font-medium"
+          @click="reopenFilePicker"
+        >
+          Choose a different picture
+        </button>
       </div>
 
       <div v-if="step2Error" class="rounded-lg border px-4 py-3 text-sm" :class="bannerClass(step2Error.level)">
@@ -433,7 +506,7 @@ function bannerClass(level) {
     <!-- Step 3: Approve crops -->
     <div v-else-if="step === 3" class="bg-surface border border-border rounded-lg shadow-sm p-6 space-y-4">
       <p class="text-sm font-medium text-ink">
-        {{ selectedCount }} of {{ crops.length }} selected (need 5-10)
+        {{ selectedCount }} of {{ crops.length }} selected ({{ selectionRule }})
       </p>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">

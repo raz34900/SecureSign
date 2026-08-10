@@ -2,6 +2,8 @@
 import { computed, nextTick, ref } from 'vue'
 import { postForm, ApiError } from '../api.js'
 import { isClerk } from '../auth.js'
+import { assessCapture } from '../capture.js'
+import CaptureGuide from '../components/CaptureGuide.vue'
 import {
   formatConfidence,
   formatDateTime,
@@ -23,6 +25,8 @@ const originalPreviewUrl = ref('')
 const pending = ref(false)
 const result = ref(null)
 const errorNotice = ref(null) // { level: 'warning' | 'error', title: string, message: string }
+
+const captureNotice = ref(null) // { level: 'good' | 'warning' | 'error', title, message }
 
 const regions = ref([])
 const regionPending = ref(false)
@@ -259,11 +263,29 @@ function toggleAnchor(anchor) {
 
 /* ---------- file handling ---------- */
 
+const CAPTURE_THEMES = {
+  good: { panel: 'border-valid-border bg-valid-surface', title: 'text-valid' },
+  warning: { panel: 'border-warning-border bg-warning-surface', title: 'text-warning' },
+  error: { panel: 'border-danger-border bg-danger-surface', title: 'text-danger' },
+}
+
+const captureTheme = computed(
+  () => CAPTURE_THEMES[captureNotice.value?.level] ?? CAPTURE_THEMES.warning,
+)
+
 function handleFileChange(event) {
   const chosen = event.target.files && event.target.files[0]
   if (!chosen) return
   setFile(chosen)
   findRegions(chosen)
+  assessFile(chosen)
+}
+
+async function assessFile(chosen) {
+  captureNotice.value = null
+  const verdict = await assessCapture(chosen)
+  if (originalFile.value !== chosen) return
+  captureNotice.value = verdict
 }
 
 function setFile(chosen) {
@@ -276,6 +298,7 @@ function clearFile() {
   originalFile.value = null
   if (originalPreviewUrl.value) URL.revokeObjectURL(originalPreviewUrl.value)
   originalPreviewUrl.value = ''
+  captureNotice.value = null
   clearRegions()
 }
 
@@ -494,6 +517,34 @@ async function reset() {
             @click="openCamera"
           >
             Use the camera
+          </button>
+        </div>
+
+        <details class="mt-3 rounded-lg border border-border bg-surface">
+          <summary class="min-h-11 cursor-pointer px-4 py-3 text-sm font-medium text-ink marker:text-ink-subtle">
+            How to photograph a signature
+          </summary>
+          <div class="border-t border-border px-4 py-3">
+            <CaptureGuide />
+          </div>
+        </details>
+
+        <!-- Advice about the picture, never a block on sending it. -->
+        <div
+          v-if="captureNotice"
+          :class="captureTheme.panel"
+          class="mt-3 rounded-lg border px-4 py-3"
+        >
+          <p :class="captureTheme.title" class="text-sm font-semibold">
+            {{ captureNotice.title }}
+          </p>
+          <p class="mt-1 text-sm text-ink">{{ captureNotice.message }}</p>
+          <button
+            type="button"
+            class="mt-2 min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm font-medium text-navy transition-colors hover:bg-sunken"
+            @click="openFilePicker"
+          >
+            Choose a different picture
           </button>
         </div>
 
