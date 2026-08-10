@@ -18,11 +18,15 @@ const SCALE_MAX_DISTANCE = 1.0
 const PREVIEW_GROUP_SIZE = 3
 
 const nationalId = ref('')
-const file = ref(null)
-const previewUrl = ref('')
+const originalFile = ref(null)
+const originalPreviewUrl = ref('')
 const pending = ref(false)
 const result = ref(null)
 const errorNotice = ref(null) // { level: 'warning' | 'error', title: string, message: string }
+
+const regions = ref([])
+const regionPending = ref(false)
+const chosenRegion = ref(null)
 
 const fileInput = ref(null)
 const cameraInput = ref(null)
@@ -31,7 +35,65 @@ const verdictHeading = ref(null)
 
 const nationalIdTouched = ref(false)
 const nationalIdValid = computed(() => NATIONAL_ID_PATTERN.test(nationalId.value))
-const canSubmit = computed(() => nationalIdValid.value && !!file.value && !pending.value)
+
+/* ---------- which image gets checked ---------- */
+
+const activeRegion = computed(() =>
+  typeof chosenRegion.value === 'number'
+    ? regions.value.find((region) => region.position === chosenRegion.value) ?? null
+    : null,
+)
+
+const submissionFile = computed(() => activeRegion.value?.file ?? originalFile.value)
+
+const previewUrl = computed(() =>
+  activeRegion.value
+    ? `data:image/png;base64,${activeRegion.value.image}`
+    : originalPreviewUrl.value,
+)
+
+const awaitingChoice = computed(() => !!originalFile.value && chosenRegion.value === null)
+
+const canSubmit = computed(
+  () =>
+    nationalIdValid.value &&
+    !!submissionFile.value &&
+    !awaitingChoice.value &&
+    !regionPending.value &&
+    !pending.value,
+)
+
+const submitLabel = computed(() => {
+  if (pending.value) return 'Checking the signature…'
+  if (regionPending.value) return 'Looking for the signature…'
+  if (awaitingChoice.value) return 'Choose the signature above to continue'
+  return 'Check this signature'
+})
+
+const previewCaption = computed(() => {
+  if (activeRegion.value) return 'This part of the image will be checked.'
+  if (awaitingChoice.value) return 'Choose the signature below to continue.'
+  if (regions.value.length > 0) return 'The whole image will be checked.'
+  return 'Ready to check.'
+})
+
+/* One steady live region. Announcing the picker itself would read out every card. */
+const regionAnnouncement = computed(() => {
+  if (regionPending.value) return 'Looking for the signature in this image.'
+  if (regions.value.length > 1 && chosenRegion.value === null) {
+    return 'More than one marking was found in this image. Choose which one is the signature, or use the whole image.'
+  }
+  if (regions.value.length === 1 && activeRegion.value) {
+    return 'The signature was found and cut out of the picture.'
+  }
+  return ''
+})
+
+const comparedImageUrl = computed(() =>
+  result.value?.query_preview_png_base64
+    ? `data:image/png;base64,${result.value.query_preview_png_base64}`
+    : previewUrl.value,
+)
 
 const showAllAnchors = ref(false)
 const expandedAnchorKey = ref(null)
@@ -201,12 +263,75 @@ function handleFileChange(event) {
   const chosen = event.target.files && event.target.files[0]
   if (!chosen) return
   setFile(chosen)
+  findRegions(chosen)
 }
 
 function setFile(chosen) {
-  file.value = chosen
-  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
-  previewUrl.value = URL.createObjectURL(chosen)
+  originalFile.value = chosen
+  if (originalPreviewUrl.value) URL.revokeObjectURL(originalPreviewUrl.value)
+  originalPreviewUrl.value = URL.createObjectURL(chosen)
+}
+
+function clearFile() {
+  originalFile.value = null
+  if (originalPreviewUrl.value) URL.revokeObjectURL(originalPreviewUrl.value)
+  originalPreviewUrl.value = ''
+  clearRegions()
+}
+
+function clearRegions() {
+  regions.value = []
+  chosenRegion.value = null
+}
+
+function base64ToFile(base64, name) {
+  const binary = atob(base64)
+  const bytes = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+  return new File([bytes], name, { type: 'image/png' })
+}
+
+async function findRegions(chosen) {
+  errorNotice.value = null
+  clearRegions()
+  regionPending.value = true
+  const scan = chosen
+  try {
+    const formData = new FormData()
+    formData.append('file', chosen)
+    const data = await postForm('/verify/regions', formData)
+    if (originalFile.value !== scan) return
+    const found = Array.isArray(data?.regions) ? data.regions : []
+    regions.value = found.map((region, order) => ({
+      position: order + 1,
+      image: region.preview_png_base64,
+      file: base64ToFile(region.preview_png_base64, `signature-${order + 1}.png`),
+    }))
+    if (regions.value.length === 0) chosenRegion.value = 'whole'
+    else if (regions.value.length === 1) chosenRegion.value = 1
+    else chosenRegion.value = null
+  } catch (err) {
+    if (originalFile.value !== scan) return
+    const unreadable =
+      err instanceof ApiError && (err.code === 'INVALID_IMAGE' || err.status === 422)
+    if (unreadable) {
+      errorNotice.value = noticeFor(err)
+      clearFile()
+      return
+    }
+    regions.value = []
+    chosenRegion.value = 'whole'
+  } finally {
+    if (originalFile.value === scan || !originalFile.value) regionPending.value = false
+  }
+}
+
+function chooseRegion(position) {
+  chosenRegion.value = position
+}
+
+function chooseWholeImage() {
+  chosenRegion.value = 'whole'
 }
 
 function openFilePicker() {
@@ -265,7 +390,7 @@ async function handleSubmit() {
   try {
     const formData = new FormData()
     formData.append('national_id', nationalId.value)
-    formData.append('file', file.value)
+    formData.append('file', submissionFile.value)
     result.value = await postForm('/verify', formData)
     await nextTick()
     verdictHeading.value?.focus()
@@ -277,9 +402,7 @@ async function handleSubmit() {
 }
 
 async function reset() {
-  file.value = null
-  if (previewUrl.value) URL.revokeObjectURL(previewUrl.value)
-  previewUrl.value = ''
+  clearFile()
   errorNotice.value = null
   result.value = null
   showAllAnchors.value = false
@@ -374,13 +497,124 @@ async function reset() {
           </button>
         </div>
 
+        <p class="sr-only" role="status" aria-live="polite">{{ regionAnnouncement }}</p>
+
+        <p v-if="regionPending" class="mt-4 text-sm text-ink-muted">
+          Looking for the signature in this image…
+        </p>
+
         <div v-if="previewUrl" class="mt-4 rounded-lg border border-border bg-sunken p-3">
           <img
             :src="previewUrl"
-            alt="The signature image you selected, ready to be checked"
+            alt="The signature image that will be checked"
             class="mx-auto max-h-56 w-auto rounded"
           />
-          <p class="mt-2 text-center text-xs text-ink-muted">Ready to check.</p>
+          <p class="mt-2 text-center text-xs text-ink-muted">{{ previewCaption }}</p>
+        </div>
+
+        <!-- One region: used on its own, with a way back to the full picture. -->
+        <div
+          v-if="regions.length === 1"
+          class="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface p-3"
+        >
+          <img
+            :src="'data:image/png;base64,' + regions[0].image"
+            alt="The signature as it was cut out of the picture"
+            class="h-12 w-20 shrink-0 rounded border border-border bg-surface object-contain"
+          />
+          <p class="min-w-40 flex-1 text-xs text-ink-muted">
+            <template v-if="chosenRegion === 1">
+              The signature was found in the picture and cut out. Only this part is checked.
+            </template>
+            <template v-else>
+              The whole picture is being checked, including anything printed around the
+              signature. That can make a genuine signature look wrong.
+            </template>
+          </p>
+          <button
+            v-if="chosenRegion === 1"
+            type="button"
+            class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm font-medium text-navy transition-colors hover:bg-sunken"
+            @click="chooseWholeImage"
+          >
+            Use the whole image instead
+          </button>
+          <button
+            v-else
+            type="button"
+            class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm font-medium text-navy transition-colors hover:bg-sunken"
+            @click="chooseRegion(1)"
+          >
+            Use the cut out signature
+          </button>
+        </div>
+
+        <!-- Several regions: only the clerk knows which mark is the signature. -->
+        <div v-else-if="regions.length > 1" class="mt-3 rounded-lg border border-border bg-sunken p-4">
+          <h3 class="text-sm font-semibold text-ink">
+            More than one marking was found in this image
+          </h3>
+          <p class="mt-1 text-sm text-ink-muted">
+            Which one is the signature? Only the part you pick is checked. Checking the whole
+            page as well can make a genuine signature look wrong.
+          </p>
+
+          <div class="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <button
+              v-for="region in regions"
+              :key="region.position"
+              type="button"
+              :aria-pressed="chosenRegion === region.position"
+              class="relative flex min-h-11 flex-col items-center gap-2 rounded-lg border-2 p-2 text-left transition-colors"
+              :class="chosenRegion === region.position
+                ? 'border-valid-border bg-valid-surface'
+                : 'border-border bg-surface hover:border-border-strong'"
+              @click="chooseRegion(region.position)"
+            >
+              <span
+                class="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full border"
+                :class="chosenRegion === region.position
+                  ? 'border-valid bg-valid text-ink-inverse'
+                  : 'border-border-strong bg-surface'"
+                aria-hidden="true"
+              >
+                <svg
+                  v-if="chosenRegion === region.position"
+                  xmlns="http://www.w3.org/2000/svg"
+                  class="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  stroke-width="3"
+                >
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                </svg>
+              </span>
+              <img
+                :src="'data:image/png;base64,' + region.image"
+                :alt="`Marking ${region.position} found in the image`"
+                class="h-20 w-full rounded bg-surface object-contain"
+              />
+              <span
+                class="text-2xs font-medium"
+                :class="chosenRegion === region.position ? 'text-valid' : 'text-ink-subtle'"
+              >
+                {{ chosenRegion === region.position ? 'Chosen' : `Marking ${region.position}` }}
+              </span>
+            </button>
+          </div>
+
+          <button
+            type="button"
+            :aria-pressed="chosenRegion === 'whole'"
+            class="mt-3 min-h-11 w-full rounded-lg border px-4 py-2 text-sm font-medium transition-colors"
+            :class="chosenRegion === 'whole'
+              ? 'border-valid-border bg-valid-surface text-valid'
+              : 'border-border-strong bg-surface text-navy hover:bg-sunken'"
+            @click="chooseWholeImage"
+          >
+            {{ chosenRegion === 'whole' ? 'Using the whole image' : 'Use the whole image instead' }}
+          </button>
         </div>
       </div>
 
@@ -389,7 +623,7 @@ async function reset() {
         :disabled="!canSubmit"
         class="min-h-11 w-full rounded-lg bg-brand-green px-4 py-3 text-base font-semibold text-navy transition enabled:hover:brightness-95 disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-subtle"
       >
-        {{ pending ? 'Checking the signature…' : 'Check this signature' }}
+        {{ submitLabel }}
       </button>
     </form>
 
@@ -472,12 +706,17 @@ async function reset() {
         <div class="grid gap-6 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
           <!-- submitted signature, stays in view while the anchors scroll -->
           <div class="sticky top-4 z-10 self-start rounded-xl border-2 border-navy bg-surface p-3">
-            <h3 class="mb-2 text-sm font-semibold text-navy">The signature you submitted</h3>
+            <h3 class="mb-2 text-sm font-semibold text-navy">What was compared</h3>
             <img
-              :src="previewUrl"
-              alt="The signature submitted for this check, shown for comparison against the references on file"
-              class="mx-auto max-h-28 w-auto rounded md:max-h-56"
+              :src="comparedImageUrl"
+              alt="The submitted signature after cleaning, which is the image compared against the references on file"
+              class="mx-auto max-h-28 w-auto rounded border border-border md:max-h-56"
             />
+            <p class="mt-2 text-2xs leading-snug text-ink-muted">
+              This is the submitted signature after cleaning, which is what the check
+              actually ran on. If it looks cut off or unclear, photograph it again from
+              straight on in better light.
+            </p>
           </div>
 
           <!-- anchors -->
@@ -520,8 +759,8 @@ async function reset() {
                     <div class="grid gap-4 sm:grid-cols-2">
                       <figure>
                         <img
-                          :src="previewUrl"
-                          :alt="`The submitted signature, shown beside reference ${anchor.position}`"
+                          :src="comparedImageUrl"
+                          :alt="`The submitted signature after cleaning, shown beside reference ${anchor.position}`"
                           class="h-40 w-full rounded border border-border bg-surface object-contain"
                         />
                         <figcaption class="mt-1 text-xs text-ink-muted">Submitted now</figcaption>

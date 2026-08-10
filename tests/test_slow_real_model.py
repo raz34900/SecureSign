@@ -125,3 +125,49 @@ def test_region_selection_rescues_a_signature_on_a_form(embedder):
 
     assert best.verdict == "VALID"
     assert best.distance < whole_page.distance
+
+
+CHEQUE = "data/check.jpg"
+
+needs_cheque = pytest.mark.skipif(
+    not os.path.exists(CHEQUE),
+    reason="data/check.jpg is gitignored local test data",
+)
+
+
+@needs_weights
+@needs_samples
+@needs_cheque
+def test_real_cheque_signature_verifies_once_isolated(embedder):
+    """End to end on a photographed cheque, the case the verify path was failing.
+
+    The whole page embeds the form. The region as the extractor returns it still
+    carries the printed reference number and two registration squares, which inflate
+    the crop so the signature occupies a fraction of the model input. Only after the
+    furniture is stripped does the genuine signature match.
+    """
+    import io
+
+    from signature_core.anchors import extract_vertical_anchors
+    from signature_core.cleanup import isolate_signature_ink
+
+    imgs = sample_images()
+    refs = [embedder.embed(i) for i in imgs]
+
+    def verdict_for(image):
+        query = embedder.embed(image)
+        return decide([float(np.linalg.norm(ref - query)) for ref in refs])
+
+    page = open(CHEQUE, "rb").read()
+    regions = extract_vertical_anchors(page)
+    assert regions, "extractor found nothing on the cheque"
+
+    cleaned = [isolate_signature_ink(region) for region in regions]
+    best = min((verdict_for(region) for region in cleaned), key=lambda d: d.distance)
+    assert best.verdict == "VALID", (
+        f"the signature on the cheque should verify once isolated, got {best.distance:.4f}"
+    )
+
+    # And the raw page on its own must not be treated as a usable query.
+    whole_page = verdict_for(Image.open(io.BytesIO(page)).convert("L"))
+    assert best.distance < whole_page.distance
