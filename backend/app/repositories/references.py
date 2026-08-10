@@ -37,3 +37,10 @@ def own_count(db: Session, customer_id: str, org_id: str) -> int:
     return db.execute(select(func.count()).select_from(ReferenceSignature)
                       .where(ReferenceSignature.customer_id == customer_id,
                              ReferenceSignature.org_id == org_id)).scalar_one()
+
+
+def total_count(db: Session, customer_id: str) -> int:
+    """References held for this customer across every organisation."""
+    return int(db.execute(
+        select(func.count()).select_from(ReferenceSignature)
+        .where(ReferenceSignature.customer_id == customer_id)).scalar_one())

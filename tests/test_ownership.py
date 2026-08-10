@@ -289,3 +289,98 @@ def test_non_enrolling_org_cannot_delete_customer(client, seeded, session_factor
     from backend.app.models_db import Customer
     with session_factory() as db:
         assert db.get(Customer, cust_id).status == "active"
+
+
+# --- reference counts after the per-customer rule change -----------------------
+
+
+def test_existing_customer_may_be_topped_up_with_a_single_signature(client, seeded, session_factory):
+    """A customer already on file has met the five-signature bar, so a second
+    institution can contribute whatever it managed to capture."""
+    card = _card([5] * 6)
+    login(client, "Bank A", "clerk1")
+    cust_id = do_full_enrolment(client, "123456720", card=card)
+    client.cookies.clear()
+
+    login(client, "Bank B", "clerk2")
+    staged = client.post("/customers", json={
+        "national_id": "123456720", "full_name": "Top Up",
+        "consent": {"granted": True, "method": "in_person"}}).json()
+    assert staged["mode"] == "append"
+
+    crops = client.post(f"/customers/{staged['enrolment_id']}/card",
+                        files={"file": ("card.jpg", card, "image/jpeg")}).json()["crops"]
+    r = client.post(f"/customers/{staged['enrolment_id']}/references",
+                    json={"crop_ids": [crops[0]["crop_id"]]})
+    assert r.status_code == 200, r.text
+    assert len(refs_of(session_factory, cust_id, seeded["bank2"])) == 1
+
+
+def test_a_thin_card_is_accepted_when_topping_up_but_not_when_enrolling(client, seeded):
+    """The full specimen card is only demanded for a customer nobody holds yet."""
+    thin = _card([5, 5])
+    login(client, "Bank A", "clerk1")
+
+    fresh = client.post("/customers", json={
+        "national_id": "123456721", "full_name": "Fresh",
+        "consent": {"granted": True, "method": "signed_form"}}).json()["enrolment_id"]
+    rejected = client.post(f"/customers/{fresh}/card",
+                           files={"file": ("card.jpg", thin, "image/jpeg")})
+    assert rejected.status_code == 422
+    assert rejected.json()["error"]["code"] == "INSUFFICIENT_SIGNATURES"
+
+    do_full_enrolment(client, "123456722", card=_card([5] * 6))
+    client.cookies.clear()
+    login(client, "Bank B", "clerk2")
+    staged = client.post("/customers", json={
+        "national_id": "123456722", "full_name": "Fresh",
+        "consent": {"granted": True, "method": "in_person"}}).json()["enrolment_id"]
+    accepted = client.post(f"/customers/{staged}/card",
+                           files={"file": ("card.jpg", thin, "image/jpeg")})
+    assert accepted.status_code == 200, accepted.text
+
+
+def test_an_org_may_remove_its_own_while_another_org_keeps_the_customer_verifiable(
+        client, seeded, session_factory):
+    card = _card([5] * 6)
+    login(client, "Bank A", "clerk1")
+    cust_id = do_full_enrolment(client, "123456723", card=card)
+    client.cookies.clear()
+
+    login(client, "Bank B", "clerk2")
+    staged = client.post("/customers", json={
+        "national_id": "123456723", "full_name": "Shared",
+        "consent": {"granted": True, "method": "in_person"}}).json()["enrolment_id"]
+    crops = client.post(f"/customers/{staged}/card",
+                        files={"file": ("card.jpg", card, "image/jpeg")}).json()["crops"]
+    client.post(f"/customers/{staged}/references",
+                json={"crop_ids": [c["crop_id"] for c in crops[:2]]})
+
+    for ref in refs_of(session_factory, cust_id, seeded["bank2"]):
+        assert client.delete(
+            f"/customers/{cust_id}/references/{ref.id}").status_code == 200
+    assert refs_of(session_factory, cust_id, seeded["bank2"]) == []
+
+
+def test_the_customer_wide_ceiling_is_enforced(client, seeded, monkeypatch):
+    """Separation stops improving well before this point, so the cap only bounds
+    storage and per-verification work."""
+    from backend.app.services import enrolment as enrolment_service
+
+    monkeypatch.setattr(enrolment_service, "MAX_CUSTOMER_REFS", 7)
+    card = _card([5] * 6)
+    login(client, "Bank A", "clerk1")
+    do_full_enrolment(client, "123456724", card=card)
+    client.cookies.clear()
+
+    login(client, "Bank B", "clerk2")
+    staged = client.post("/customers", json={
+        "national_id": "123456724", "full_name": "Capped",
+        "consent": {"granted": True, "method": "in_person"}}).json()["enrolment_id"]
+    crops = client.post(f"/customers/{staged}/card",
+                        files={"file": ("card.jpg", card, "image/jpeg")}).json()["crops"]
+
+    r = client.post(f"/customers/{staged}/references",
+                    json={"crop_ids": [c["crop_id"] for c in crops[:5]]})  # 6 + 5 > 7
+    assert r.status_code == 422
+    assert r.json()["error"]["code"] == "TOO_MANY_SIGNATURES"

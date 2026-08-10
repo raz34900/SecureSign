@@ -147,10 +147,10 @@ def delete_reference(customer_id: str, reference_id: str, db: Session = Depends(
     ref = db.get(ReferenceSignature, reference_id)
     if ref is None or ref.customer_id != customer_id or ref.org_id != user.org_id:
         raise _not_found()
-    if references_repo.own_count(db, customer_id, user.org_id) - 1 < enrolment.MIN_REFS:
+    if references_repo.total_count(db, customer_id) - 1 < enrolment.MIN_REFS:
         raise AppError("REFERENCE_FLOOR",
-                       f"An organisation must keep at least {enrolment.MIN_REFS} reference "
-                       "signatures for a customer.", 422)
+                       f"This customer would be left with fewer than {enrolment.MIN_REFS} "
+                       "reference signatures, which is not enough to verify against.", 422)
     image_path = ref.image_path
     db.delete(ref)
     db.commit()

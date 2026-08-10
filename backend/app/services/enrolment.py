@@ -28,6 +28,11 @@ from signature_core.decision import decide
 _TTL_SECONDS = 15 * 60
 MIN_REFS, MAX_REFS = 5, 10
 
+MIN_APPEND_REFS = 1
+
+MAX_ORG_REFS = 10
+MAX_CUSTOMER_REFS = 30
+
 
 @dataclass
 class _Staged:
@@ -75,10 +80,15 @@ def stage(db: Session, national_id: str, full_name: str, consent_granted: bool,
 def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict]:
     staged = _get(enrolment_id, org_id)
     crops = extract_vertical_anchors(image_bytes)
-    if len(crops) < MIN_REFS:
+
+    appending = staged.target_customer_id is not None
+    required = MIN_APPEND_REFS if appending else MIN_REFS
+    if len(crops) < required:
+        detail = ("Please photograph at least one clear signature."
+                  if appending else "Please rescan a more complete specimen card.")
         raise AppError("INSUFFICIENT_SIGNATURES",
-                       f"Only {len(crops)} signatures detected; at least {MIN_REFS} are required. "
-                       "Please rescan a more complete specimen card.", 422)
+                       f"Only {len(crops)} signatures detected; at least {required} "
+                       f"are required. {detail}", 422)
     staged.crops = {}
     out = []
     for crop in crops:
@@ -149,12 +159,17 @@ def _approve_append(db: Session, embedder, staged: _Staged, selected: list[Image
         raise AppError("CUSTOMER_NOT_FOUND", "Customer not found.", 404)
 
     owned = references_repo.own_count(db, customer.id, staged.org_id)
-    if not selected or (owned == 0 and len(selected) < MIN_REFS):
+    total = references_repo.total_count(db, customer.id)
+    if len(selected) < MIN_APPEND_REFS:
         raise AppError("INSUFFICIENT_SIGNATURES",
-                       f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
-    if owned + len(selected) > MAX_REFS:
+                       f"At least {MIN_APPEND_REFS} approved signature is required.", 422)
+    if total + len(selected) > MAX_CUSTOMER_REFS:
         raise AppError("TOO_MANY_SIGNATURES",
-                       f"An organisation may hold at most {MAX_REFS} reference signatures "
+                       f"This customer already holds {total} reference signatures, and the "
+                       f"registry keeps at most {MAX_CUSTOMER_REFS} for one customer.", 422)
+    if owned + len(selected) > MAX_ORG_REFS:
+        raise AppError("TOO_MANY_SIGNATURES",
+                       f"An organisation may hold at most {MAX_ORG_REFS} reference signatures "
                        "for a customer.", 422)
 
     settings = get_settings()
