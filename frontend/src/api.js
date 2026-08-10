@@ -22,7 +22,7 @@ async function handleResponse(res) {
     const error = body && body.error
     throw new ApiError(
       error?.code ?? 'UNKNOWN',
-      error?.message ?? res.statusText ?? 'Request failed',
+      error?.message ?? 'Something went wrong. Please try again.',
       res.status,
     )
   }
@@ -35,7 +35,7 @@ async function request(path, options) {
   try {
     res = await fetch(`${BASE}${path}`, options)
   } catch {
-    throw new ApiError('NETWORK', 'Network request failed.', 0)
+    throw new ApiError('NETWORK', 'Could not reach the server. Check your connection and try again.', 0)
   }
   return handleResponse(res)
 }

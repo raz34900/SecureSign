@@ -9,6 +9,7 @@ const STEPS = [
 ]
 
 const step = ref(1) // 1 | 2 | 3 | 'success'
+const showCancelConfirm = ref(false)
 
 // --- Step 1: details ---
 const nationalId = ref('')
@@ -92,6 +93,10 @@ const step3Submitting = ref(false)
 const selectedCount = computed(() => crops.value.filter((c) => c.selected).length)
 const canApprove = computed(() => selectedCount.value >= 5 && selectedCount.value <= 10)
 
+function toggleCrop(crop) {
+  crop.selected = !crop.selected
+}
+
 async function approveReferences() {
   if (!canApprove.value || step3Submitting.value) return
   step3Error.value = null
@@ -158,14 +163,49 @@ function saveRecentCustomer(customerId, nationalIdValue, fullNameValue) {
   localStorage.setItem(key, JSON.stringify(list))
 }
 
+// --- Navigation: back, cancel, expiry ---
 const expiredMessage = ref('')
 
-function expireAndRestart() {
-  expiredMessage.value = 'Enrolment expired, start again'
+function goBack() {
+  if (typeof step.value === 'number' && step.value > 1) {
+    step.value -= 1
+  }
+}
+
+function requestCancel() {
+  showCancelConfirm.value = true
+}
+
+function dismissCancel() {
+  showCancelConfirm.value = false
+}
+
+function confirmCancel() {
+  showCancelConfirm.value = false
   resetWizard()
 }
 
+/**
+ * The staging record behind enrolmentId has expired server-side. Show the
+ * notice before clearing anything, and keep what the clerk already typed
+ * (national ID, name, consent) so they are not forced to retype it.
+ */
+function expireAndRestart() {
+  expiredMessage.value = 'This enrolment session expired before it finished. Your national ID, name and consent are still filled in below, so you can continue.'
+  showCancelConfirm.value = false
+  step.value = 1
+  enrolmentId.value = null
+  enrolMode.value = null
+  if (cardPreviewUrl.value) URL.revokeObjectURL(cardPreviewUrl.value)
+  cardFile.value = null
+  cardPreviewUrl.value = ''
+  step2Error.value = null
+  crops.value = []
+  step3Error.value = null
+}
+
 function resetWizard() {
+  expiredMessage.value = ''
   step.value = 1
   nationalId.value = ''
   fullName.value = ''
@@ -183,18 +223,43 @@ function resetWizard() {
   successCustomerId.value = ''
   successReferenceCount.value = 0
   successMode.value = null
+  showCancelConfirm.value = false
 }
 
 function enrolAnother() {
-  expiredMessage.value = ''
   resetWizard()
 }
 
-function stepCircleClass(n) {
-  const current = step.value === 'success' ? 4 : step.value
-  if (current === n) return 'bg-navy text-white'
-  if (current > n) return 'bg-brand-green text-white'
-  return 'bg-gray-200 text-gray-500'
+// --- Stepper ---
+function stepStatus(n) {
+  if (step.value === n) return 'current'
+  if (typeof step.value === 'number' && step.value > n) return 'complete'
+  return 'upcoming'
+}
+
+function circleClass(n) {
+  const status = stepStatus(n)
+  if (status === 'current') return 'bg-navy border-navy text-ink-inverse'
+  if (status === 'complete') return 'bg-brand-green border-brand-green text-navy'
+  return 'bg-surface border-border-strong text-ink-muted'
+}
+
+function labelClass(n) {
+  const status = stepStatus(n)
+  if (status === 'current') return 'text-navy font-semibold'
+  if (status === 'complete') return 'text-ink font-medium'
+  return 'text-ink-subtle font-medium'
+}
+
+function connectorClass(n) {
+  // Connector before step n is "filled" once step n has been reached.
+  return typeof step.value === 'number' && step.value >= n ? 'bg-brand-green' : 'bg-border-strong'
+}
+
+function bannerClass(level) {
+  return level === 'warning'
+    ? 'border-warning-border bg-warning-surface text-warning'
+    : 'border-danger-border bg-danger-surface text-danger'
 }
 </script>
 
@@ -202,7 +267,7 @@ function stepCircleClass(n) {
   <div class="max-w-2xl mx-auto">
     <h1 class="text-2xl font-bold text-navy mb-6">Enrol customer</h1>
 
-    <div v-if="expiredMessage" class="mb-6 rounded-lg border border-red-400 bg-red-50 text-red-800 px-4 py-3">
+    <div v-if="expiredMessage" class="mb-6 rounded-lg border px-4 py-3 text-sm" :class="bannerClass('warning')">
       {{ expiredMessage }}
     </div>
 
@@ -210,72 +275,81 @@ function stepCircleClass(n) {
       v-if="enrolMode === 'append' && (step === 2 || step === 3)"
       class="mb-6 rounded-lg border border-navy/30 bg-navy/5 text-navy px-4 py-3 text-sm"
     >
-      Customer already registered — new signatures will be verified against the registered references before acceptance.
+      Customer already registered. New signatures will be verified against the registered references before acceptance.
     </div>
 
-    <div v-if="step !== 'success'" class="flex items-center justify-center gap-3 mb-8">
-      <template v-for="(s, i) in STEPS" :key="s.n">
-        <div class="flex items-center gap-2">
-          <div :class="stepCircleClass(s.n)" class="w-8 h-8 rounded-full flex items-center justify-center font-semibold text-sm">
-            {{ s.n }}
+    <nav v-if="step !== 'success'" aria-label="Enrolment progress" class="mb-8">
+      <ol class="flex items-start">
+        <li v-for="(s, i) in STEPS" :key="s.n" class="flex items-start" :class="i < STEPS.length - 1 ? 'flex-1' : ''">
+          <div class="flex flex-col items-center gap-1.5 shrink-0">
+            <div
+              class="w-8 h-8 rounded-full border-2 flex items-center justify-center font-semibold text-sm"
+              :class="circleClass(s.n)"
+              :aria-current="stepStatus(s.n) === 'current' ? 'step' : undefined"
+            >
+              <svg v-if="stepStatus(s.n) === 'complete'" xmlns="http://www.w3.org/2000/svg" class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+              </svg>
+              <span v-else>{{ s.n }}</span>
+            </div>
+            <span class="text-2xs sm:text-xs text-center leading-tight max-w-[5rem]" :class="labelClass(s.n)">{{ s.label }}</span>
           </div>
-          <span :class="step === s.n ? 'text-navy font-semibold' : 'text-gray-500'">{{ s.label }}</span>
-        </div>
-        <div v-if="i < STEPS.length - 1" class="w-8 h-px bg-gray-300"></div>
-      </template>
-    </div>
+          <div v-if="i < STEPS.length - 1" class="flex-1 h-0.5 mx-1.5 sm:mx-2 mt-4 rounded" :class="connectorClass(s.n + 1)"></div>
+        </li>
+      </ol>
+    </nav>
 
     <!-- Step 1: Details -->
-    <div v-if="step === 1" class="bg-white rounded-lg shadow p-6 space-y-4">
+    <div v-if="step === 1" class="bg-surface border border-border rounded-lg shadow-sm p-6 space-y-4">
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">National ID</label>
+        <label class="block text-sm font-medium text-ink-muted mb-1">National ID</label>
         <input
           v-model="nationalId"
           type="text"
           inputmode="numeric"
           maxlength="9"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-navy"
+          class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
           placeholder="9-digit national ID"
         />
-        <p v-if="nationalId.length > 0 && !nationalIdValid" class="text-sm text-red-600 mt-1">
+        <p v-if="nationalId.length > 0 && !nationalIdValid" class="text-sm text-danger mt-1">
           National ID must be exactly 9 digits.
         </p>
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Full name</label>
+        <label class="block text-sm font-medium text-ink-muted mb-1">Full name</label>
         <input
           v-model="fullName"
           type="text"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-navy"
+          class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
           placeholder="Customer full name"
         />
       </div>
 
       <div>
-        <label class="block text-sm font-medium text-gray-700 mb-1">Consent method</label>
+        <label class="block text-sm font-medium text-ink-muted mb-1">Consent method</label>
         <select
           v-model="consentMethod"
-          class="w-full rounded-lg border border-gray-300 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-navy"
+          class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
         >
           <option value="signed_form">Signed form</option>
           <option value="in_person">In person</option>
         </select>
       </div>
 
-      <label class="flex items-start gap-2 text-sm text-gray-700">
-        <input v-model="consentGranted" type="checkbox" class="mt-1" />
+      <label class="flex items-center gap-2 text-sm text-ink min-h-11">
+        <input v-model="consentGranted" type="checkbox" class="shrink-0" />
         <span>Customer consents to shared verification by subscribing organisations</span>
       </label>
 
-      <div v-if="step1Error" class="rounded-lg border border-red-400 bg-red-50 text-red-800 px-4 py-3 text-sm">
+      <div v-if="step1Error" class="rounded-lg border px-4 py-3 text-sm" :class="bannerClass('error')">
         {{ step1Error }}
       </div>
 
       <button
         type="button"
         :disabled="!step1Valid || step1Submitting"
-        class="w-full bg-brand-green text-navy font-semibold rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+        class="w-full min-h-11 bg-brand-green text-navy font-semibold rounded-lg py-2 disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
         @click="submitStep1"
       >
         {{ step1Submitting ? 'Submitting…' : 'Continue' }}
@@ -283,14 +357,14 @@ function stepCircleClass(n) {
     </div>
 
     <!-- Step 2: Specimen card -->
-    <div v-else-if="step === 2" class="bg-white rounded-lg shadow p-6 space-y-4">
-      <p class="text-sm text-gray-600">
+    <div v-else-if="step === 2" class="bg-surface border border-border rounded-lg shadow-sm p-6 space-y-4">
+      <p class="text-sm text-ink-muted">
         Card must contain 5-10 signatures, one below the other, with clear spacing
       </p>
 
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label class="block">
-          <span class="block text-sm font-medium text-gray-700 mb-1">Upload file</span>
+        <label class="flex flex-col min-h-11 justify-center">
+          <span class="block text-sm font-medium text-ink-muted mb-1">Upload file</span>
           <input
             type="file"
             accept="image/*"
@@ -298,8 +372,8 @@ function stepCircleClass(n) {
             @change="onFileSelected"
           />
         </label>
-        <label class="block">
-          <span class="block text-sm font-medium text-gray-700 mb-1">Use camera</span>
+        <label class="flex flex-col min-h-11 justify-center">
+          <span class="block text-sm font-medium text-ink-muted mb-1">Use camera</span>
           <input
             type="file"
             accept="image/*"
@@ -310,72 +384,131 @@ function stepCircleClass(n) {
         </label>
       </div>
 
-      <div v-if="cardPreviewUrl" class="rounded-lg border border-gray-200 p-2">
+      <div v-if="cardPreviewUrl" class="rounded-lg border border-border p-2">
         <img :src="cardPreviewUrl" alt="Specimen card preview" class="max-h-80 mx-auto rounded" />
       </div>
 
-      <div
-        v-if="step2Error"
-        :class="step2Error.level === 'warning'
-          ? 'border-amber-400 bg-amber-50 text-amber-800'
-          : 'border-red-400 bg-red-50 text-red-800'"
-        class="rounded-lg border px-4 py-3 text-sm"
-      >
+      <div v-if="step2Error" class="rounded-lg border px-4 py-3 text-sm" :class="bannerClass(step2Error.level)">
         {{ step2Error.message }}
       </div>
 
-      <button
-        type="button"
-        :disabled="!cardFile || step2Uploading"
-        class="w-full bg-brand-green text-navy font-semibold rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        @click="uploadCard"
-      >
-        {{ step2Uploading ? 'Uploading…' : 'Upload' }}
-      </button>
+      <div class="flex flex-wrap gap-3">
+        <button
+          type="button"
+          class="min-h-11 px-4 rounded-lg border border-border-strong bg-surface text-ink font-medium"
+          @click="goBack"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          class="min-h-11 px-4 rounded-lg text-ink-muted font-medium underline underline-offset-2"
+          @click="requestCancel"
+        >
+          Cancel enrolment
+        </button>
+        <button
+          type="button"
+          :disabled="!cardFile || step2Uploading"
+          class="flex-1 min-h-11 bg-brand-green text-navy font-semibold rounded-lg py-2 disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
+          @click="uploadCard"
+        >
+          {{ step2Uploading ? 'Uploading…' : 'Upload' }}
+        </button>
+      </div>
+
+      <div v-if="showCancelConfirm" class="rounded-lg border px-4 py-3 text-sm space-y-2" :class="bannerClass('warning')">
+        <p>Cancel this enrolment. The entered details and uploaded specimen will be discarded.</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="min-h-11 px-3 rounded-lg border border-border-strong bg-surface text-ink font-medium" @click="dismissCancel">
+            Keep editing
+          </button>
+          <button type="button" class="min-h-11 px-3 rounded-lg bg-danger text-ink-inverse font-medium" @click="confirmCancel">
+            Discard and cancel
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Step 3: Approve crops -->
-    <div v-else-if="step === 3" class="bg-white rounded-lg shadow p-6 space-y-4">
-      <p class="text-sm font-medium text-gray-700">
+    <div v-else-if="step === 3" class="bg-surface border border-border rounded-lg shadow-sm p-6 space-y-4">
+      <p class="text-sm font-medium text-ink">
         {{ selectedCount }} of {{ crops.length }} selected (need 5-10)
       </p>
 
-      <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-        <label
+      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <button
           v-for="crop in crops"
           :key="crop.crop_id"
-          class="bg-white border border-gray-200 rounded-lg p-2 flex flex-col items-center gap-2 cursor-pointer"
+          type="button"
+          :aria-pressed="crop.selected"
+          class="relative flex flex-col items-center gap-2 rounded-lg border-2 p-2 min-h-11 text-left"
+          :class="crop.selected ? 'border-valid-border bg-valid-surface' : 'border-border bg-sunken'"
+          @click="toggleCrop(crop)"
         >
-          <img :src="'data:image/png;base64,' + crop.preview_png_base64" class="w-full h-auto rounded" />
-          <input v-model="crop.selected" type="checkbox" />
-        </label>
+          <span
+            class="absolute top-1.5 right-1.5 flex h-5 w-5 items-center justify-center rounded-full border"
+            :class="crop.selected ? 'bg-valid border-valid text-ink-inverse' : 'bg-surface border-border-strong'"
+            aria-hidden="true"
+          >
+            <svg v-if="crop.selected" xmlns="http://www.w3.org/2000/svg" class="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+            </svg>
+          </span>
+          <img :src="'data:image/png;base64,' + crop.preview_png_base64" alt="Signature specimen" class="w-full h-auto rounded" />
+          <span class="text-2xs font-medium" :class="crop.selected ? 'text-valid' : 'text-ink-subtle'">
+            {{ crop.selected ? 'Selected' : 'Not selected' }}
+          </span>
+        </button>
       </div>
 
-      <div
-        v-if="step3Error"
-        :class="step3Error.level === 'warning'
-          ? 'border-amber-400 bg-amber-50 text-amber-800'
-          : 'border-red-400 bg-red-50 text-red-800'"
-        class="rounded-lg border px-4 py-3 text-sm space-y-1"
-      >
+      <div v-if="step3Error" class="rounded-lg border px-4 py-3 text-sm space-y-1" :class="bannerClass(step3Error.level)">
         <p>{{ step3Error.message }}</p>
         <p v-if="step3Error.note" class="font-medium">{{ step3Error.note }}</p>
       </div>
 
-      <button
-        type="button"
-        :disabled="!canApprove || step3Submitting"
-        class="w-full bg-brand-green text-navy font-semibold rounded-lg py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-        @click="approveReferences"
-      >
-        {{ step3Submitting ? 'Approving…' : 'Approve' }}
-      </button>
+      <div class="flex flex-wrap gap-3">
+        <button
+          type="button"
+          class="min-h-11 px-4 rounded-lg border border-border-strong bg-surface text-ink font-medium"
+          @click="goBack"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          class="min-h-11 px-4 rounded-lg text-ink-muted font-medium underline underline-offset-2"
+          @click="requestCancel"
+        >
+          Cancel enrolment
+        </button>
+        <button
+          type="button"
+          :disabled="!canApprove || step3Submitting"
+          class="flex-1 min-h-11 bg-brand-green text-navy font-semibold rounded-lg py-2 disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
+          @click="approveReferences"
+        >
+          {{ step3Submitting ? 'Approving…' : 'Approve' }}
+        </button>
+      </div>
+
+      <div v-if="showCancelConfirm" class="rounded-lg border px-4 py-3 text-sm space-y-2" :class="bannerClass('warning')">
+        <p>Cancel this enrolment. The entered details and uploaded specimen will be discarded.</p>
+        <div class="flex flex-wrap gap-2">
+          <button type="button" class="min-h-11 px-3 rounded-lg border border-border-strong bg-surface text-ink font-medium" @click="dismissCancel">
+            Keep editing
+          </button>
+          <button type="button" class="min-h-11 px-3 rounded-lg bg-danger text-ink-inverse font-medium" @click="confirmCancel">
+            Discard and cancel
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- Success -->
-    <div v-else class="bg-white rounded-lg shadow p-8 text-center space-y-4">
-      <div class="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center">
-        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+    <div v-else class="bg-surface border border-border rounded-lg shadow-sm p-8 text-center space-y-4">
+      <div class="mx-auto w-16 h-16 rounded-full bg-valid-surface flex items-center justify-center">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-10 h-10 text-valid" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
           <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
         </svg>
       </div>
@@ -384,21 +517,21 @@ function stepCircleClass(n) {
       </h2>
 
       <div class="flex items-center justify-center gap-2">
-        <code class="bg-gray-100 rounded px-3 py-1 text-sm">{{ successCustomerId }}</code>
+        <code class="bg-sunken rounded px-3 py-1 text-sm text-ink">{{ successCustomerId }}</code>
         <button
           type="button"
-          class="text-sm text-navy underline"
+          class="text-sm text-navy underline min-h-11 px-1"
           @click="copyCustomerId"
         >
           {{ copied ? 'Copied!' : 'Copy' }}
         </button>
       </div>
 
-      <p class="text-sm text-gray-600">{{ successReferenceCount }} reference signatures stored</p>
+      <p class="text-sm text-ink-muted">{{ successReferenceCount }} reference signatures stored</p>
 
       <button
         type="button"
-        class="bg-navy text-white font-semibold rounded-lg px-4 py-2"
+        class="min-h-11 bg-navy text-ink-inverse font-semibold rounded-lg px-4 py-2"
         @click="enrolAnother"
       >
         Enrol another customer
