@@ -2,8 +2,10 @@ import base64
 import io
 from typing import Annotated
 
+import numpy as np
 from fastapi import APIRouter, Depends, Form, Request, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from PIL import Image
 from pydantic import StringConstraints
 from sqlalchemy.orm import Session
 
@@ -12,20 +14,36 @@ from backend.app.errors import AppError
 from backend.app.routers.customers import read_upload
 from backend.app.services import verification
 from signature_core.anchors import extract_vertical_anchors
+from signature_core.cleanup import isolate_signature_ink
 from signature_core.quality import validate_image_quality
 
 router = APIRouter(tags=["verify"])
 
 NationalId = Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
 
-MAX_REGIONS = 12
+MAX_REGIONS = 24
+
+
+def _ink_fraction(image: Image.Image) -> float:
+    """Share of the region that is ink. Printed labels are dense, handwriting is not."""
+    pixels = np.asarray(image.convert("L"))
+    if pixels.size == 0:
+        return 1.0
+    return float((pixels < 128).mean())
 
 
 def _extract_regions(image_bytes: bytes) -> list[dict]:
+    candidates = []
+    for crop in extract_vertical_anchors(image_bytes):
+        cleaned = isolate_signature_ink(crop)
+        candidates.append((_ink_fraction(cleaned), cleaned))
+
+    candidates.sort(key=lambda item: item[0])
+
     regions = []
-    for index, crop in enumerate(extract_vertical_anchors(image_bytes)[:MAX_REGIONS]):
+    for index, (_, cleaned) in enumerate(candidates[:MAX_REGIONS]):
         buffer = io.BytesIO()
-        crop.save(buffer, format="PNG")
+        cleaned.save(buffer, format="PNG")
         regions.append({
             "index": index,
             "preview_png_base64": base64.b64encode(buffer.getvalue()).decode(),

@@ -3,7 +3,7 @@ import base64
 import io
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
@@ -13,7 +13,22 @@ from backend.app.repositories import audit, customers as customers_repo, referen
 from backend.app.repositories import verifications as verifications_repo
 from backend.app.security.crypto import blind_index
 from signature_core.decision import calculate_confidence, decide
+from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.quality import validate_image_quality
+
+
+def _query_preview(query_img: Image.Image) -> str:
+    """The normalised image the comparison actually ran on.
+
+    Showing the clerk their own photograph hides capture problems: a shadow, a fold or
+    a stray mark changes what the model sees without changing what the clerk sees.
+    This is the same deterministic transform the embedder applies, so it is exactly
+    what was compared, and a bad capture is obvious at a glance.
+    """
+    normalised = UnifiedSignatureTransform()(query_img)
+    buffer = io.BytesIO()
+    ImageOps.invert(normalised.convert("L")).save(buffer, format="PNG")
+    return base64.b64encode(buffer.getvalue()).decode()
 
 
 def _reference_views(refs: list[ReferenceSignature], distances: list[float],
@@ -76,6 +91,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         "confidence": round(result.confidence, 1),
         "model_version": settings.model_version,
         "verified_at": row.created_at.isoformat() + "Z",
+        "query_preview_png_base64": _query_preview(query_img),
     }
     if include_references:
         response["references"] = _reference_views(refs, distances, result.threshold)
