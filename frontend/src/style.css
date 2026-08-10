@@ -1,6 +1,100 @@
 @import "tailwindcss";
 
+/* SecureSign design tokens.
+   Brand navy and green are fixed (they appear in the project book's screenshots).
+   Everything else is derived: neutrals are tinted toward the navy hue rather than
+   pure grey, and no surface is pure #fff or #000. */
 @theme {
+  /* Brand, locked */
   --color-navy: #0b2b5e;
+  --color-navy-soft: oklch(0.38 0.085 264);
   --color-brand-green: #8cc440;
+
+  /* Surfaces */
+  --color-canvas: oklch(0.972 0.005 264);
+  --color-surface: oklch(0.995 0.002 264);
+  --color-sunken: oklch(0.945 0.007 264);
+  --color-border: oklch(0.9 0.008 264);
+  --color-border-strong: oklch(0.8 0.014 264);
+
+  /* Text */
+  --color-ink: oklch(0.3 0.035 264);
+  --color-ink-muted: oklch(0.48 0.025 264);
+  --color-ink-subtle: oklch(0.58 0.02 264);
+  --color-ink-inverse: oklch(0.98 0.004 264);
+
+  /* Decision states. Three, not two: a model that is 84% accurate at a 0.3999
+     threshold produces genuinely borderline results, and they must be able to
+     look borderline. */
+  --color-valid: oklch(0.52 0.13 149);
+  --color-valid-surface: oklch(0.965 0.032 149);
+  --color-valid-border: oklch(0.82 0.09 149);
+
+  --color-fraud: oklch(0.53 0.2 27);
+  --color-fraud-surface: oklch(0.965 0.03 27);
+  --color-fraud-border: oklch(0.82 0.11 27);
+
+  --color-borderline: oklch(0.56 0.13 72);
+  --color-borderline-surface: oklch(0.965 0.045 82);
+  --color-borderline-border: oklch(0.82 0.12 82);
+
+  /* Feedback */
+  --color-warning: oklch(0.56 0.13 72);
+  --color-warning-surface: oklch(0.965 0.045 82);
+  --color-warning-border: oklch(0.82 0.12 82);
+  --color-danger: oklch(0.53 0.2 27);
+  --color-danger-surface: oklch(0.965 0.03 27);
+  --color-danger-border: oklch(0.82 0.11 27);
+
+  /* One focus colour for the whole product. Meets 3:1 against both canvas and
+     surface, which the previous brand-green ring did not. */
+  --color-focus: oklch(0.52 0.18 258);
+
+
+  /* Type scale, fixed rem, ~1.2 ratio. Product UI is viewed at consistent DPI,
+     so nothing here is fluid. */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.125rem;
+  --text-4xl: 2.625rem;
+}
+
+:root {
+  /* Stop the browser substituting a dark canvas behind light-mode content. */
+  color-scheme: light;
+}
+
+html {
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  min-height: 100vh;
+}
+
+/* One focus treatment everywhere. Keyboard users get a visible ring; pointer
+   users do not get a stray outline on click. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

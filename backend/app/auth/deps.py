@@ -24,6 +24,7 @@ class CurrentUser:
     user_id: str
     org_id: str
     org_type: str
+    org_name: str
     role: str
     username: str
 
@@ -40,7 +41,7 @@ def get_current_user(db: Session = Depends(get_db),
     if user is None or org is None or not user.is_active or not org.is_active:
         raise AppError("AUTH_INVALID", "Session is invalid or expired.", 401)
     return CurrentUser(user_id=user.id, org_id=org.id, org_type=org.type,
-                       role=user.role, username=user.username)
+                       org_name=org.name, role=user.role, username=user.username)
 
 
 def require_roles(*roles: str):

@@ -46,4 +46,5 @@ def logout(response: Response, db: Session = Depends(get_db),
 
 @router.get("/me")
 def me(user: CurrentUser = Depends(get_current_user)) -> dict:
-    return {"username": user.username, "role": user.role, "org_type": user.org_type}
+    return {"username": user.username, "role": user.role,
+            "org_type": user.org_type, "org_name": user.org_name}
