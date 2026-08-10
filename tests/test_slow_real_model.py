@@ -72,3 +72,56 @@ def test_latency_p95_under_2s(embedder):
         times.append(time.perf_counter() - start)
     p95 = sorted(times)[int(0.95 * len(times)) - 1]
     assert p95 < 2.0, f"p95={p95:.3f}s"
+
+
+def _paste_on_form(signature: Image.Image) -> bytes:
+    """Put a real signature on a printed form, the way a clerk photographs a cheque."""
+    import io
+
+    from PIL import ImageDraw
+
+    doc = Image.new("L", (1100, 800), 255)
+    draw = ImageDraw.Draw(doc)
+    y = 60
+    for width in (700, 560, 620, 480):
+        draw.rectangle([(70, y), (70 + width, y + 30)], fill=35)
+        y += 85
+    scaled = signature.resize((460, int(signature.size[1] * 460 / signature.size[0])))
+    doc.paste(scaled, (330, y + 70))
+    buffer = io.BytesIO()
+    doc.convert("RGB").save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
+@needs_weights
+@needs_samples
+def test_region_selection_rescues_a_signature_on_a_form(embedder):
+    """Regression for the verify-path crop gap.
+
+    Preprocessing tight-crops around every mark it finds, so a genuine signature
+    photographed on a form embeds the form and is rejected. Isolating the region
+    first is what makes the same signature verifiable.
+    """
+    import io
+
+    from signature_core.anchors import extract_vertical_anchors
+
+    imgs = sample_images()
+    refs = [embedder.embed(i) for i in imgs[:-1]]
+    document = _paste_on_form(imgs[-1])
+
+    def distances_for(image):
+        query = embedder.embed(image)
+        return [float(np.linalg.norm(ref - query)) for ref in refs]
+
+    whole_page = decide(distances_for(Image.open(io.BytesIO(document)).convert("L")))
+    assert whole_page.verdict == "FRAUD", (
+        "fixture no longer reproduces the bug it guards against"
+    )
+
+    regions = extract_vertical_anchors(document)
+    assert regions, "no candidate region found on the form"
+    best = min((decide(distances_for(crop)) for crop in regions), key=lambda d: d.distance)
+
+    assert best.verdict == "VALID"
+    assert best.distance < whole_page.distance
