@@ -1,7 +1,7 @@
 <table>
   <tr>
     <td align="center">
-      <img width="160" alt="SecureSign Logo" src="https://github.com/user-attachments/assets/ab83738e-9523-471c-bf9e-bc2fcff46d69" />
+      <img width="156" height="217" alt="לוגו" src="https://github.com/user-attachments/assets/00859042-a9fc-42f6-b428-87800a5d9878" />
     </td>
     <td valign="center">
       <h1>SecureSign</h1>
