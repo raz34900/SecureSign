@@ -12,8 +12,9 @@ services:
     depends_on:
       - api
 
-  # Same image, TLS configuration mounted over the default. Active only under
-  # the "tls" profile so it never fights the plain frontend for ports.
+  # Same image, TLS configuration mounted over the default. The profile gates this
+  # service on; it does not gate the plain frontend off, and both claim 8080/8081.
+  # Start it with: docker compose --profile tls up -d frontend-tls api
   frontend-tls:
     profiles: ["tls"]
     build:
