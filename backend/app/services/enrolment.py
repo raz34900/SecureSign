@@ -183,6 +183,10 @@ def _approve_append(db: Session, embedder, staged: _Staged, selected: list[Image
 
     settings = get_settings()
     existing = references_repo.embeddings_for(db, customer.id)
+    if references_repo.total_count(db, customer.id) and not existing:
+        raise AppError("REFERENCES_UNREADABLE",
+                       "This customer's existing reference signatures could not be read, "
+                       "so new signatures cannot be checked against them.", 500)
     vectors, worst, mismatch = [], 0.0, False
     for crop in selected:
         vector = embedder.embed(crop)
