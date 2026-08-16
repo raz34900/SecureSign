@@ -134,12 +134,30 @@ def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_d
         ref.image_path = path
 
 
+def _reject_inconsistent(vectors: list[np.ndarray], threshold: float) -> None:
+    """DEF-06. Each specimen is scored against the others by the same rule verification
+    uses, so a crop that would read as a different writer never reaches the registry."""
+    if len(vectors) < 2:
+        return
+    for index, vector in enumerate(vectors):
+        others = [other for position, other in enumerate(vectors) if position != index]
+        result = decide([float(np.linalg.norm(other - vector)) for other in others], threshold)
+        if result.verdict == "FRAUD":
+            raise AppError("INCONSISTENT_REFERENCES",
+                           f"Specimen {index + 1} does not match the others on this card "
+                           f"(distance {result.distance:.4f}). Deselect it and approve "
+                           "the rest, or rescan the card.", 422)
+
+
 def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Image],
                  samples_dir: str) -> Customer:
     if not (MIN_REFS <= len(selected) <= MAX_REFS):
         raise AppError("INSUFFICIENT_SIGNATURES",
                        f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
     settings = get_settings()
+    vectors = [embedder.embed(crop) for crop in selected]
+    _reject_inconsistent(vectors, settings.threshold)
+
     customer = Customer(
         national_id_encrypted=encrypt_pii(staged.national_id, settings.pii_enc_key),
         national_id_index=blind_index(staged.national_id, settings.pii_index_key),
@@ -151,7 +169,7 @@ def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Im
         db.flush()
         db.add(ConsentRecord(customer_id=customer.id, org_id=staged.org_id,
                              method=staged.consent_method))
-        _store_crops(db, embedder, customer.id, staged.org_id, samples_dir, selected)
+        _store_crops(db, embedder, customer.id, staged.org_id, samples_dir, selected, vectors)
         db.commit()
     except IntegrityError:
         db.rollback()

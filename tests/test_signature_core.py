@@ -60,10 +60,12 @@ from signature_core.quality import validate_image_quality
 
 
 def make_specimen_card(n: int = 9) -> bytes:
-    card = Image.new("L", (800, 80 + n * 180 + 100), 255)
+    # Row pitch is a multiple of 8 so every row sits at the same JPEG block phase
+    # and all n crops decode byte-identical (the card is meant to be one writer).
+    card = Image.new("L", (800, 80 + n * 184 + 100), 255)
     d = ImageDraw.Draw(card)
     for i in range(n):
-        y = 80 + i * 180
+        y = 80 + i * 184
         d.line([(150, y), (300, y + 40), (450, y - 10), (650, y + 30)], fill=0, width=6)
     buf = io.BytesIO()
     card.convert("RGB").save(buf, format="JPEG")
