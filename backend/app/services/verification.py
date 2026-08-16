@@ -1,6 +1,7 @@
 """Verify flow: sanity → lookup → embed → mean distance → decide → persist (one txn)."""
 import base64
 import io
+import logging
 
 import numpy as np
 from PIL import Image, ImageOps
@@ -15,6 +16,8 @@ from backend.app.security.crypto import blind_index
 from signature_core.decision import calculate_confidence, decide
 from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.quality import validate_image_quality
+
+log = logging.getLogger("securesign")
 
 
 def _query_preview(query_img: Image.Image) -> str:
@@ -69,12 +72,18 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
     query_img = Image.open(io.BytesIO(image_bytes)).convert("L")
     query_vec = embedder.embed(query_img)
     refs, distances = [], []
+    skipped = 0
     for ref in references_repo.all_for(db, customer.id):
         vector = references_repo.decode_embedding(ref.embedding)
         if vector is None:
-            continue  # one damaged row must not fail the whole comparison
+            skipped += 1  # one damaged row must not fail the whole comparison
+            continue
         refs.append(ref)
         distances.append(float(np.linalg.norm(vector - query_vec)))
+
+    if skipped:
+        log.warning("customer %s: %d reference embedding(s) unreadable, "
+                    "verifying against %d usable", customer.id, skipped, len(distances))
 
     if not distances:
         raise AppError("REFERENCES_UNREADABLE",

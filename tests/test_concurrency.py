@@ -75,7 +75,7 @@ def test_ten_concurrent_clients_stay_under_the_latency_budget(app, enrolled, see
         f"(median {statistics.median(timings):.3f}s, max {timings[-1]:.3f}s)")
 
 
-def test_concurrent_verifications_are_all_recorded(app, enrolled, seeded):
+def test_concurrent_verifications_are_all_recorded(app, enrolled, seeded, session_factory):
     """No lost writes: every request that returned 200 has a row behind it."""
     from fastapi.testclient import TestClient
 
@@ -94,7 +94,8 @@ def test_concurrent_verifications_are_all_recorded(app, enrolled, seeded):
 
     assert succeeded == CLIENTS * REQUESTS_PER_CLIENT
 
-    reader = TestClient(app)
-    login(reader, "SB44", "rep1")
-    rows = reader.get("/verifications").json()["verifications"]
-    assert len(rows) >= min(succeeded, 100)
+    from backend.app.models_db import Verification
+
+    with session_factory() as db:
+        recorded = db.query(Verification).count()
+    assert recorded == succeeded
