@@ -38,7 +38,7 @@ def post_regions(client, image_bytes: bytes, filename: str = "doc.jpg"):
 
 
 def test_document_yields_multiple_candidate_regions(client, seeded):
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     response = post_regions(client, make_printed_document())
     assert response.status_code == 200, response.text
     regions = response.json()["regions"]
@@ -49,8 +49,8 @@ def test_document_yields_multiple_candidate_regions(client, seeded):
 
 
 def test_specimen_card_yields_one_region_per_signature(client, seeded):
-    login(client, "Bank A", "clerk1")
-    response = post_regions(client, make_specimen_card(6), filename="card.jpg")
+    login(client, "BA11", "clerk1")
+    response = post_regions(client, make_specimen_card(9), filename="card.jpg")
     assert response.status_code == 200
     assert len(response.json()["regions"]) >= 5
 
@@ -58,14 +58,14 @@ def test_specimen_card_yields_one_region_per_signature(client, seeded):
 def test_cropped_signature_needs_no_selection(client, seeded):
     """An already-tight signature has no distinct sub-region, so the caller just
     submits the original image. This is the path that preserves today's behaviour."""
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     response = post_regions(client, png(make_signature()), filename="sig.png")
     assert response.status_code == 200
     assert len(response.json()["regions"]) <= 1
 
 
 def test_regions_rejects_blank_image(client, seeded):
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     blank = png(Image.new("L", (400, 300), 255))
     response = post_regions(client, blank, filename="blank.png")
     assert response.status_code == 422
@@ -77,7 +77,7 @@ def test_regions_requires_auth(client, seeded):
 
 
 def test_regions_forbidden_for_engineer(client, seeded):
-    login(client, "SecureSign Ltd", "eng1")
+    login(client, "SS00", "eng1")
     assert post_regions(client, make_printed_document()).status_code == 403
 
 
@@ -85,7 +85,7 @@ def test_regions_are_capped(client, seeded):
     """A dense scan must not return a wall of thumbnails."""
     from backend.app.routers.verify import MAX_REGIONS
 
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     dense = Image.new("L", (900, 2400), 255)
     draw = ImageDraw.Draw(dense)
     for row in range(30):

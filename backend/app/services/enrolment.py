@@ -23,10 +23,12 @@ from backend.app.models_db import ConsentRecord, Customer
 from backend.app.repositories import audit, customers as customers_repo, references as references_repo
 from backend.app.security.crypto import blind_index, encrypt_pii
 from signature_core.anchors import extract_vertical_anchors
+from signature_core.cleanup import isolate_signature_ink
 from signature_core.decision import decide
 
 _TTL_SECONDS = 15 * 60
-MIN_REFS, MAX_REFS = 5, 10
+# Eight, not five: five was measured at ~20% false rejection on genuine signatures.
+MIN_REFS, MAX_REFS = 8, 10
 
 MIN_APPEND_REFS = 1
 
@@ -78,8 +80,15 @@ def stage(db: Session, national_id: str, full_name: str, consent_granted: bool,
 
 
 def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict]:
+    """Extract, then strip non-signature ink - the same two steps verification runs.
+
+    A specimen card scanned on white paper comes back untouched, because the cleanup is
+    a no-op when there is nothing confidently removable. A close-up photograph of a
+    single signature does not: it carries background texture and stray marks, and
+    leaving them in stores a reference the model reads as a different writer.
+    """
     staged = _get(enrolment_id, org_id)
-    crops = extract_vertical_anchors(image_bytes)
+    crops = [isolate_signature_ink(crop) for crop in extract_vertical_anchors(image_bytes)]
 
     appending = staged.target_customer_id is not None
     required = MIN_APPEND_REFS if appending else MIN_REFS
