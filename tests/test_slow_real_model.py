@@ -9,7 +9,9 @@ from signature_core.decision import decide
 from signature_core.embed import Embedder
 
 WEIGHTS = "models/secure_sign_epoch_50_loss_0.2009_acc_83.48.pth"
-SAMPLE_DIR = "mock_database/123456789"
+# mock_database is demo data and is not committed. Point this elsewhere with
+# SS_TEST_SAMPLE_DIR when running against a different set of genuine signatures.
+SAMPLE_DIR = os.environ.get("SS_TEST_SAMPLE_DIR", "mock_database/123456789")
 
 pytestmark = pytest.mark.slow
 
@@ -171,3 +173,53 @@ def test_real_cheque_signature_verifies_once_isolated(embedder):
     # And the raw page on its own must not be treated as a usable query.
     whole_page = verdict_for(Image.open(io.BytesIO(page)).convert("L"))
     assert best.distance < whole_page.distance
+
+
+@needs_weights
+@needs_samples
+def test_robustness_to_rotation_and_scale(embedder):
+    """Book 10.2.4: up to 15 degrees and 50% rescale, under 5% score deviation.
+
+    Stronger than a verdict-stability check: a score that survives the verdict boundary
+    by luck would pass that and fail this.
+    """
+    images = sample_images()
+    references = [embedder.embed(image) for image in images[:-1]]
+    original = images[-1]
+
+    def mean_distance(image):
+        query = embedder.embed(image)
+        return float(np.mean([np.linalg.norm(r - query) for r in references]))
+
+    baseline = mean_distance(original)
+    width, height = original.size
+
+    variants = {
+        "rotate +15": original.rotate(15, fillcolor=255, expand=True),
+        "rotate -15": original.rotate(-15, fillcolor=255, expand=True),
+        "scale 0.5": original.resize((max(1, width // 2), max(1, height // 2))),
+        "scale 1.5": original.resize((int(width * 1.5), int(height * 1.5))),
+    }
+
+    for label, variant in variants.items():
+        deviation = abs(mean_distance(variant) - baseline) / baseline
+        assert deviation < 0.05, f"{label}: score moved {deviation:.1%}, limit 5%"
+
+
+@needs_weights
+def test_specimen_card_extraction_accuracy():
+    """Book 6.4.6: at least 90% of the signatures on a card are extracted.
+
+    Measured over a range of card sizes so the figure is not one lucky layout.
+    """
+    from signature_core.anchors import extract_vertical_anchors
+    from test_signature_core import make_specimen_card
+
+    expected_total, found_total = 0, 0
+    for count in (8, 9, 10, 12, 15):
+        found = len(extract_vertical_anchors(make_specimen_card(count)))
+        expected_total += count
+        found_total += min(found, count)  # extra regions are the clerk's to deselect
+
+    accuracy = found_total / expected_total
+    assert accuracy >= 0.90, f"extraction accuracy {accuracy:.1%}, book claims 92%"
