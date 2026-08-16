@@ -7,7 +7,7 @@ engineering panel and is never reachable from the public web.
 import pytest
 
 from conftest import login
-from test_engineering import INTERNAL, enter_panel
+from test_engineering import enter_panel
 from test_enrolment import do_full_enrolment
 
 NEW_BANK = {"code": "NB77", "name": "New Bank", "type": "financial"}
@@ -213,7 +213,6 @@ def test_a_handed_out_password_blocks_everything_until_replaced(client, admin):
     admin.post("/admin/users", json=new_user())
 
     client.cookies.clear()
-    client.headers.pop("X-Internal-Panel", None)
     assert login(client, "NB77", "clerk9", password="correct-horse-battery").json()[
         "must_change_password"] is True
 
@@ -283,7 +282,6 @@ def test_a_user_who_has_verified_cannot_be_deleted(client, admin):
     from test_verify import png, verify
 
     client.cookies.clear()
-    client.headers.pop("X-Internal-Panel", None)
     login(client, "BA11", "clerk1")
     do_full_enrolment(client, "123456810")
     verify(client, "123456810", png(make_signature()))
@@ -322,7 +320,6 @@ def test_an_organisation_holding_customer_records_is_not_deleted(client, admin):
     admin.post("/admin/users", json=new_user())
 
     client.cookies.clear()
-    client.headers.pop("X-Internal-Panel", None)
     login(client, "NB77", "clerk9", password="correct-horse-battery")
     client.post("/auth/password", json={"current_password": "correct-horse-battery",
                                         "new_password": "something-else-entirely"})
@@ -349,14 +346,6 @@ def test_you_cannot_delete_yourself(admin):
 # --- reachability ----------------------------------------------------------
 
 
-def test_provisioning_is_invisible_from_the_public_entrypoint(client, seeded):
-    """No internal marker: the account surface must not admit to existing."""
-    login(client, "SS00", "eng1")
-    assert client.get("/admin/organisations").status_code == 404
-    assert client.post("/admin/organisations", json=NEW_BANK).status_code == 404
-    assert client.get("/admin/users").status_code == 404
-
-
 def test_provisioning_is_engineer_only(client, seeded):
     for org, username in (("BA11", "clerk1"), ("SB44", "rep1")):
         client.cookies.clear()
@@ -366,7 +355,6 @@ def test_provisioning_is_engineer_only(client, seeded):
 
 
 def test_provisioning_requires_auth(client, seeded):
-    client.headers.update(INTERNAL)
     assert client.get("/admin/organisations").status_code == 401
 
 

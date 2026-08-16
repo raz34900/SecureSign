@@ -24,7 +24,6 @@ def make_admin(client, org_code: str, username: str) -> str:
         "password": STRONG}).json()
 
     client.cookies.clear()
-    client.headers.pop("X-Internal-Panel", None)
     login(client, org_code, username, password=STRONG)
     client.post("/auth/password", json={"current_password": STRONG,
                                         "new_password": f"{STRONG}-{username}"})
@@ -63,7 +62,6 @@ def test_a_subscriber_org_admin_verifies_but_cannot_enrol(client, seeded):
 
 
 def test_an_org_admin_never_reaches_the_engineering_panel(bank_admin):
-    bank_admin.headers.update({"X-Internal-Panel": "1"})
     assert bank_admin.get("/engineering/overview").status_code == 403
     assert bank_admin.get("/admin/users").status_code == 403
 
@@ -150,7 +148,6 @@ def test_bank_a_cannot_touch_bank_b_users(client, seeded):
     victim = next(row["user_id"] for row in client.get("/admin/users").json()["users"]
                   if row["username"] == "clerk2")  # Bank B
     client.cookies.clear()
-    client.headers.pop("X-Internal-Panel", None)
 
     make_admin(client, "BA11", "boss1")
     client.cookies.clear()

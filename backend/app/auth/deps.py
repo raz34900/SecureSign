@@ -63,28 +63,6 @@ def get_current_user(db: Session = Depends(get_db),
                        must_change_password=user.must_change_password)
 
 
-INTERNAL_MARKER_HEADER = "x-internal-panel"
-_LOOPBACK = frozenset({"127.0.0.1", "::1", "localhost"})
-
-
-def require_internal(request: Request) -> None:
-    """Gate an endpoint to the machine running the service.
-
-    Two ways in, and only two. Either the caller is the host itself — the API port is
-    published on loopback only — or the request arrived through the internal entrypoint,
-    which is the sole listener that sets the marker header. The public entrypoint clears
-    that header on every request it proxies, so it cannot be forged from outside.
-
-    404 rather than 403: the public web should not learn that the endpoint exists.
-    """
-    client_host = request.client.host if request.client else None
-    if client_host in _LOOPBACK:
-        return
-    if request.headers.get(INTERNAL_MARKER_HEADER) == "1":
-        return
-    raise AppError("NOT_FOUND", "Not found.", 404)
-
-
 def require_roles(*roles: str):
     def guard(user: CurrentUser = Depends(get_current_user),
               db: Session = Depends(get_db)) -> CurrentUser:

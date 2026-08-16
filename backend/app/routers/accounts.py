@@ -4,16 +4,15 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy.orm import Session
 
-from backend.app.auth.deps import CurrentUser, get_db, require_internal, require_roles
+from backend.app.auth.deps import CurrentUser, get_db, require_roles
 from backend.app.repositories import audit
 from backend.app.routers.auth import OrgCode, Username
 from backend.app.services import accounts
 
-# Account provisioning is not model engineering; it shares the engineering panel's gate
-# because creating and disabling accounts is the highest-privilege thing the system does,
-# and it should never be reachable from the public web. Internal network only.
-router = APIRouter(prefix="/admin", tags=["accounts"],
-                   dependencies=[Depends(require_internal)])
+# Account provisioning is not model engineering, but it lives behind the same door:
+# creating and disabling accounts is the highest-privilege thing the system does.
+# Reachability is a deployment control — public 404, internal listener on loopback only.
+router = APIRouter(prefix="/admin", tags=["accounts"])
 
 OrgName = Annotated[str, StringConstraints(min_length=2, max_length=120, strip_whitespace=True)]
 

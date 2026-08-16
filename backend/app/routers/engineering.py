@@ -4,15 +4,16 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from backend.app.auth.deps import CurrentUser, get_db, require_internal, require_roles
+from backend.app.auth.deps import CurrentUser, get_db, require_roles
 from backend.app.errors import AppError
 from backend.app.models_db import ModelFeedback
 from backend.app.repositories import audit
 from backend.app.services import engineering
 
-# Internal tooling: reachable from the host running the stack, never from the public web.
-router = APIRouter(prefix="/engineering", tags=["engineering"],
-                   dependencies=[Depends(require_internal)])
+# Internal tooling. Reachability is a deployment control, not an application one: the
+# public entrypoint returns 404 for this prefix and the internal listener is published
+# on the host loopback only. See CLAUDE.md.
+router = APIRouter(prefix="/engineering", tags=["engineering"])
 
 
 class ReviewBody(BaseModel):
