@@ -16,3 +16,4 @@ docs/
 .planning/
 deploy/tls/*.crt
 deploy/tls/*.key
+mock_database/
