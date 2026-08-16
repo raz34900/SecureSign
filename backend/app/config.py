@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     pii_index_key: str = ""    # 32-byte hex
     session_ttl_hours: int = 12
     max_upload_mb: int = 10
+    max_image_pixels: int = 50_000_000  # decoded size, not bytes: an 8000x6000 phone photo is 48 MP
 
 
 @lru_cache
