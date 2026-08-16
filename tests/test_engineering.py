@@ -9,14 +9,14 @@ from test_verify import png, verify
 CUSTOMER_NAME = "Test Person"
 NATIONAL_ID = "123456790"
 
-# The internal entrypoint stamps this; the public one strips it. See frontend/nginx.conf.
-INTERNAL = {"X-Internal-Panel": "1"}
-
-
 def enter_panel(client, org_code="SS00", username="eng1"):
-    """Log in and arrive the way the internal entrypoint delivers a request."""
+    """Sign in to the panel.
+
+    Reaching it is a deployment control, not an application one: the public entrypoint
+    404s this prefix and the internal listener is published on the host loopback only.
+    The application itself does not distinguish callers, so nothing is stamped here.
+    """
     login(client, org_code, username)
-    client.headers.update(INTERNAL)
 
 
 def seed_activity(client):
@@ -159,59 +159,25 @@ def test_panel_is_engineer_only(client, seeded):
 
 
 def test_panel_requires_auth(client, seeded):
-    client.headers.update(INTERNAL)
     assert client.get("/engineering/overview").status_code == 401
 
 
-# --- internal-only reachability --------------------------------------------
+# --- reachability is a deployment control -----------------------------------
 
 
-def test_panel_is_invisible_from_the_public_entrypoint(client, seeded):
-    """No marker header and no loopback caller: the panel must not even admit to existing."""
+def test_the_application_does_not_gate_the_panel_by_caller(client, seeded):
+    """Deliberate: the app authorises by role, and reachability is nginx plus the port
+    binding. Asserted so nobody reintroduces a caller check that a header could forge."""
+    import inspect
+
+    from backend.app.auth import deps
+    from backend.app.routers import accounts, engineering
+
+    assert not hasattr(deps, "require_internal")
+    for module in (engineering, accounts):
+        assert "X-Internal-Panel" not in inspect.getsource(module)
     login(client, "SS00", "eng1")
-    for path in ("/engineering/overview", "/engineering/feedback"):
-        r = client.get(path)
-        assert r.status_code == 404, path
-        assert r.json()["error"]["message"] == "Not found."
-
-
-def test_a_forged_marker_value_is_not_enough(client, seeded):
-    login(client, "SS00", "eng1")
-    client.headers.update({"X-Internal-Panel": "yes"})
-    assert client.get("/engineering/overview").status_code == 404
-
-
-def test_reviewing_a_report_is_internal_only_too(client, seeded):
-    seed_activity(client)
-    enter_panel(client)
-    feedback_id = client.get("/engineering/feedback").json()["feedback"][0]["feedback_id"]
-
-    client.headers.pop("X-Internal-Panel")
-    r = client.post(f"/engineering/feedback/{feedback_id}", json={"status": "accepted"})
-    assert r.status_code == 404
-
-
-def test_a_caller_on_the_host_itself_needs_no_marker():
-    """Running the API directly on the server is the other legitimate way in."""
-    from starlette.datastructures import Address, Headers
-
-    from backend.app.auth.deps import require_internal
-    from backend.app.errors import AppError
-
-    class Req:
-        def __init__(self, host):
-            self.client = Address(host, 50000) if host else None
-            self.headers = Headers({})
-
-    assert require_internal(Req("127.0.0.1")) is None
-    assert require_internal(Req("::1")) is None
-    for host in ("10.0.0.4", "203.0.113.7", None):
-        try:
-            require_internal(Req(host))
-        except AppError as err:
-            assert err.status == 404
-        else:
-            raise AssertionError(f"{host} should not reach the panel")
+    assert client.get("/engineering/overview").status_code == 200
 
 
 def test_engineer_cannot_reach_customer_or_verification_data(client, seeded):
