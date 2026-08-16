@@ -1,5 +1,6 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { postJson, postForm, ApiError } from '../api.js'
 import { assessCapture } from '../capture.js'
 import CaptureGuide from '../components/CaptureGuide.vue'
@@ -8,8 +9,10 @@ import CaptureGuide from '../components/CaptureGuide.vue'
 const MAX_REFERENCES = 10
 
 /** A brand new customer needs a full card. An append only needs one more signature. */
-const MIN_REFERENCES_NEW = 5
+const MIN_REFERENCES_NEW = 8
 const MIN_REFERENCES_APPEND = 1
+
+const route = useRoute()
 
 const STEPS = [
   { n: 1, label: 'Details' },
@@ -148,7 +151,6 @@ async function approveReferences() {
   try {
     const cropIds = crops.value.filter((c) => c.selected).map((c) => c.crop_id)
     const res = await postJson(`/customers/${enrolmentId.value}/references`, { crop_ids: cropIds })
-    saveRecentCustomer(res.customer_id, nationalId.value, fullName.value.trim())
     successCustomerId.value = res.customer_id
     successReferenceCount.value = res.reference_count
     successMode.value = enrolMode.value
@@ -188,24 +190,14 @@ async function copyCustomerId() {
   }
 }
 
-function saveRecentCustomer(customerId, nationalIdValue, fullNameValue) {
-  const key = 'ss_recent_customers'
-  let list = []
-  try {
-    list = JSON.parse(localStorage.getItem(key) || '[]')
-    if (!Array.isArray(list)) list = []
-  } catch {
-    list = []
+/* Arriving from a customer's page: the identity is already known, so skip retyping it. */
+onMounted(() => {
+  const prefillId = String(route.query.national_id ?? '')
+  if (/^\d{9}$/.test(prefillId)) {
+    nationalId.value = prefillId
+    fullName.value = String(route.query.full_name ?? '')
   }
-  const entry = {
-    customer_id: customerId,
-    national_id: nationalIdValue,
-    full_name: fullNameValue,
-    at: new Date().toISOString(),
-  }
-  list = [entry, ...list].slice(0, 20)
-  localStorage.setItem(key, JSON.stringify(list))
-}
+})
 
 // --- Navigation: back, cancel, expiry ---
 const expiredMessage = ref('')

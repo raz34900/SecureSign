@@ -4,8 +4,7 @@ import { RouterLink } from 'vue-router'
 import { get, del, ApiError } from '../api.js'
 import { formatDateTime } from '../format.js'
 
-const RECENT_KEY = 'ss_recent_customers'
-const REFERENCE_FLOOR = 5
+const DEFAULT_FLOOR = 8
 
 const lookupId = ref('')
 const loading = ref(false)
@@ -14,27 +13,19 @@ const notice = ref(null) // { level: 'warning' | 'error', message }
 const customer = ref(null)
 const references = ref([])
 
-const recent = ref([])
-
 const confirmingId = ref(null)
 const deleteNotice = ref(null) // { level: 'warning' | 'error', message }
 
+const referenceFloor = computed(() => customer.value?.reference_floor ?? DEFAULT_FLOOR)
+
+/* The floor counts every organisation's references, because verification compares
+   against all of them. An org with few of its own may still be free to delete. */
 const atReferenceFloor = computed(
-  () => !!customer.value && customer.value.own_reference_count <= REFERENCE_FLOOR,
+  () => !!customer.value && customer.value.total_reference_count <= referenceFloor.value,
 )
 
 function isValidNationalId(value) {
   return /^\d{9}$/.test(value)
-}
-
-function loadRecent() {
-  try {
-    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')
-    // Migrate silently: entries lacking national_id are ignored.
-    recent.value = Array.isArray(list) ? list.filter((entry) => entry && entry.national_id) : []
-  } catch {
-    recent.value = []
-  }
 }
 
 function handleEscape(event) {
@@ -43,20 +34,13 @@ function handleEscape(event) {
   }
 }
 
-onMounted(() => {
-  loadRecent()
-  window.addEventListener('keydown', handleEscape)
-})
+onMounted(() => window.addEventListener('keydown', handleEscape))
+onUnmounted(() => window.removeEventListener('keydown', handleEscape))
 
-onUnmounted(() => {
-  window.removeEventListener('keydown', handleEscape)
-})
-
-async function loadCustomer(id) {
-  const targetId = (id ?? lookupId.value).trim()
+async function loadCustomer() {
+  const targetId = lookupId.value.trim()
   if (!isValidNationalId(targetId)) return
 
-  lookupId.value = targetId
   loading.value = true
   notice.value = null
   deleteNotice.value = null
@@ -81,10 +65,6 @@ async function loadCustomer(id) {
   }
 }
 
-function selectRecent(entry) {
-  loadCustomer(entry.national_id)
-}
-
 function startDelete(referenceId) {
   if (atReferenceFloor.value) return
   deleteNotice.value = null
@@ -99,7 +79,11 @@ async function confirmDelete(referenceId) {
   try {
     await del(`/customers/${customer.value.customer_id}/references/${referenceId}`)
     references.value = references.value.filter((r) => r.reference_id !== referenceId)
-    customer.value = { ...customer.value, own_reference_count: customer.value.own_reference_count - 1 }
+    customer.value = {
+      ...customer.value,
+      own_reference_count: customer.value.own_reference_count - 1,
+      total_reference_count: customer.value.total_reference_count - 1,
+    }
     deleteNotice.value = null
   } catch (err) {
     if (err instanceof ApiError && err.code === 'REFERENCE_FLOOR') {
@@ -115,7 +99,13 @@ async function confirmDelete(referenceId) {
 
 <template>
   <div class="max-w-3xl mx-auto space-y-8">
-    <h1 class="text-2xl font-bold text-navy">Customers</h1>
+    <div>
+      <h1 class="text-2xl font-bold text-navy">Customers</h1>
+      <p class="text-sm text-ink-muted mt-1">
+        Look a customer up by national ID to see and manage the reference signatures your
+        organisation holds for them.
+      </p>
+    </div>
 
     <div class="bg-surface rounded-lg shadow p-6 space-y-3">
       <label class="block text-sm font-medium text-ink" for="lookup-national-id">National ID</label>
@@ -128,13 +118,13 @@ async function confirmDelete(referenceId) {
           maxlength="9"
           placeholder="9-digit national ID"
           class="flex-1 min-h-11 rounded-lg border border-border-strong px-3 py-2 bg-surface text-ink"
-          @keyup.enter="loadCustomer()"
+          @keyup.enter="loadCustomer"
         />
         <button
           type="button"
           :disabled="!isValidNationalId(lookupId.trim()) || loading"
           class="min-h-11 bg-brand-green text-navy font-semibold rounded-lg px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="loadCustomer()"
+          @click="loadCustomer"
         >
           {{ loading ? 'Loading…' : 'Load' }}
         </button>
@@ -159,26 +149,10 @@ async function confirmDelete(referenceId) {
       </div>
     </div>
 
-    <div v-if="recent.length > 0" class="bg-surface rounded-lg shadow p-6 space-y-3">
-      <h2 class="text-lg font-semibold text-navy">Recent enrolments</h2>
-      <ul class="divide-y divide-border">
-        <li v-for="entry in recent" :key="entry.customer_id + entry.at">
-          <button
-            type="button"
-            class="w-full min-h-11 flex items-center justify-between py-2 text-left hover:bg-sunken rounded px-2"
-            @click="selectRecent(entry)"
-          >
-            <span class="text-ink">{{ entry.full_name }}</span>
-            <code class="text-xs text-ink-subtle">{{ entry.national_id }}</code>
-          </button>
-        </li>
-      </ul>
-    </div>
-
     <div v-if="loading" class="text-center text-ink-subtle py-6">Loading customer…</div>
 
     <div v-else-if="customer" class="bg-surface rounded-lg shadow p-6 space-y-4">
-      <div class="flex items-center justify-between">
+      <div class="flex items-center justify-between gap-3">
         <h2 class="text-lg font-semibold text-navy">{{ customer.full_name }}</h2>
         <span class="inline-block rounded-full bg-brand-green/20 text-navy text-xs font-semibold px-3 py-1 capitalize">
           {{ customer.status }}
@@ -197,12 +171,24 @@ async function confirmDelete(referenceId) {
       </div>
 
       <div>
-        <h3 class="text-sm font-medium text-ink mb-1">
-          Your organisation's reference signatures ({{ references.length }})
-        </h3>
-        <p v-if="atReferenceFloor" class="text-xs text-ink-muted mb-2">
-          Your organisation must keep at least {{ REFERENCE_FLOOR }} reference signatures on file, so deletion is disabled.
+        <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
+          <h3 class="text-sm font-medium text-ink">
+            Your organisation's reference signatures ({{ references.length }})
+          </h3>
+          <RouterLink
+            :to="{ name: 'enrol', query: { national_id: lookupId.trim(), full_name: customer.full_name } }"
+            class="min-h-11 inline-flex items-center rounded-lg bg-brand-green px-4 text-sm font-semibold text-navy"
+          >
+            Add signatures
+          </RouterLink>
+        </div>
+        <p class="text-xs text-ink-muted mb-2">
+          {{ customer.total_reference_count }} on file across all organisations.
+          <template v-if="atReferenceFloor">
+            The registry keeps at least {{ referenceFloor }} for a customer, so deletion is disabled.
+          </template>
         </p>
+
         <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
           <div
             v-for="ref in references"
@@ -249,4 +235,3 @@ async function confirmDelete(referenceId) {
     </div>
   </div>
 </template>
-

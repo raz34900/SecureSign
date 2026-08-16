@@ -1,9 +1,12 @@
-"""Document cleanup, and the boundary that keeps it off the enrolment path.
+"""Document cleanup, and the boundary it must not cross.
 
-`isolate_signature_ink` exists only to make a region cut from a document comparable
-to an enrolled reference. It must never touch enrolment: stored anchors and their
-embeddings were produced by the untouched pipeline, and re-processing them would
-silently move every future distance for that customer.
+`isolate_signature_ink` runs between extraction and embedding, on both the enrolment
+and the verification path, so a reference and a query are prepared identically.
+
+The boundary is the model pipeline itself. `extract_vertical_anchors`,
+`UnifiedSignatureTransform` and the embedder are shared with training, and cleanup
+must never be pulled inside any of them: that would change what the trained weights
+were fitted to and move every distance the system has ever produced.
 """
 import base64
 import io
@@ -60,25 +63,23 @@ def test_cleanup_leaves_an_already_clean_crop_alone():
 
 
 @pytest.mark.parametrize("module", [
-    "backend/app/services/enrolment.py",
-    "backend/app/services/verification.py",
     "packages/signature_core/anchors.py",
     "packages/signature_core/preprocess.py",
     "packages/signature_core/embed.py",
 ])
-def test_cleanup_stays_off_the_enrolment_and_model_path(module):
-    """Guard rail. Stored anchors were embedded by the untouched pipeline; pulling
-    cleanup into it would move every distance for every already-enrolled customer."""
+def test_cleanup_stays_out_of_the_model_pipeline(module):
+    """Guard rail. These three are shared with training; cleanup belongs around them,
+    never inside them, or the weights no longer match what they were fitted to."""
     source = (REPO_ROOT / module).read_text()
     assert "isolate_signature_ink" not in source
     assert "signature_core.cleanup" not in source
 
 
-def test_enrolment_crops_are_the_raw_extractor_output(client, seeded):
-    """Enrolment must hand back exactly what the extractor produced, with no extra
-    processing applied on the way."""
-    login(client, "Bank A", "clerk1")
-    card = make_specimen_card(6)
+def test_enrolment_crops_are_extraction_then_cleanup(client, seeded):
+    """A reference must be prepared exactly the way a query is, or the two are not
+    comparable. Extract, then strip non-signature ink; nothing else."""
+    login(client, "BA11", "clerk1")
+    card = make_specimen_card(9)
 
     enrolment_id = client.post("/customers", json={
         "national_id": "445566778",
@@ -91,10 +92,17 @@ def test_enrolment_crops_are_the_raw_extractor_output(client, seeded):
     assert response.status_code == 200
     returned = response.json()["crops"]
 
-    expected = extract_vertical_anchors(card)
+    expected = [isolate_signature_ink(crop) for crop in extract_vertical_anchors(card)]
     assert len(returned) == len(expected)
 
     for crop, reference in zip(returned, expected):
         decoded = Image.open(io.BytesIO(base64.b64decode(crop["preview_png_base64"])))
         assert np.array_equal(np.asarray(decoded.convert("L")),
                               np.asarray(reference.convert("L")))
+
+
+def test_a_clean_specimen_card_is_unchanged_by_enrolment_cleanup():
+    """The no-op case, stated as a test: adding cleanup must not disturb card scans,
+    which is what makes it safe to apply on both paths."""
+    for crop in extract_vertical_anchors(make_specimen_card(9)):
+        assert isolate_signature_ink(crop) is crop

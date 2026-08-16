@@ -59,8 +59,8 @@ from signature_core.embed import Embedder
 from signature_core.quality import validate_image_quality
 
 
-def make_specimen_card(n: int = 6) -> bytes:
-    card = Image.new("L", (800, 1200), 255)
+def make_specimen_card(n: int = 9) -> bytes:
+    card = Image.new("L", (800, 80 + n * 180 + 100), 255)
     d = ImageDraw.Draw(card)
     for i in range(n):
         y = 80 + i * 180

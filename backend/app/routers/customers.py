@@ -95,7 +95,9 @@ def lookup_customer(national_id: Annotated[NationalId, Path()], db: Session = De
         raise _not_found()
     return {"customer_id": customer.id, "full_name": customer.full_name,
             "status": customer.status, "created_at": customer.created_at.isoformat(),
-            "own_reference_count": references_repo.own_count(db, customer.id, user.org_id)}
+            "own_reference_count": references_repo.own_count(db, customer.id, user.org_id),
+            "total_reference_count": references_repo.total_count(db, customer.id),
+            "reference_floor": enrolment.MIN_REFS}
 
 
 @router.get("/{customer_id}")
