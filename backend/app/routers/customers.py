@@ -1,8 +1,10 @@
 import base64
+import io
 import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Path, Request, UploadFile
+from PIL import Image, UnidentifiedImageError
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy.orm import Session
 
@@ -50,11 +52,30 @@ def _may_manage(db: Session, customer: Customer, org_id: str) -> bool:
             or references_repo.own_count(db, customer.id, org_id) > 0)
 
 
+def _reject_oversized_image(data: bytes, max_pixels: int) -> None:
+    """Bound the decoded size before anything decodes it. Pillow parses the header lazily,
+    so `.size` is available without allocating the bitmap; OpenCV has no equivalent guard."""
+    try:
+        with Image.open(io.BytesIO(data)) as probe:
+            width, height = probe.size
+    except Image.DecompressionBombError:
+        raise AppError("IMAGE_TOO_LARGE", "The image is too large to process.", 413)
+    except (UnidentifiedImageError, OSError):
+        raise AppError("INVALID_IMAGE", "Could not read the image data.", 422)
+
+    if width * height > max_pixels:
+        raise AppError("IMAGE_TOO_LARGE",
+                       f"The image is {width}x{height} pixels, above the "
+                       f"{max_pixels // 1_000_000} megapixel limit. Please photograph "
+                       "the signature at a normal resolution.", 413)
+
+
 async def read_upload(file: UploadFile) -> bytes:
     data = await file.read()
-    max_bytes = get_settings().max_upload_mb * 1024 * 1024
-    if len(data) > max_bytes:
+    settings = get_settings()
+    if len(data) > settings.max_upload_mb * 1024 * 1024:
         raise AppError("PAYLOAD_TOO_LARGE", "Uploaded file exceeds the size limit.", 413)
+    _reject_oversized_image(data, settings.max_image_pixels)
     return data
 
 
