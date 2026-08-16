@@ -18,7 +18,8 @@ def _now() -> datetime:
 class Organisation(Base):
     __tablename__ = "organisations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    name: Mapped[str] = mapped_column(String(120), unique=True)
+    code: Mapped[str] = mapped_column(String(12), unique=True)  # BA11 - what you log in with
+    name: Mapped[str] = mapped_column(String(120), unique=True)  # Bank A - display only
     type: Mapped[str] = mapped_column(String(20))  # financial | subscriber | operator
     is_active: Mapped[bool] = mapped_column(default=True)
     created_at: Mapped[datetime] = mapped_column(default=_now)
@@ -33,6 +34,9 @@ class User(Base):
     password_hash: Mapped[str] = mapped_column(String(200))
     role: Mapped[str] = mapped_column(String(20))  # clerk | verifier | org_admin | engineer
     is_active: Mapped[bool] = mapped_column(default=True)
+    # An administrator who sets someone's password knows it; the account is not private
+    # until its owner has replaced it, so nothing else works until they do.
+    must_change_password: Mapped[bool] = mapped_column(default=False)
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
 

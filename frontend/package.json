@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "check": "node src/routing.check.mjs",
+    "build": "npm run check && vite build",
     "preview": "vite preview"
   },
   "dependencies": {

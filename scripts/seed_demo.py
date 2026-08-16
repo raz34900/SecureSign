@@ -1,6 +1,13 @@
-"""Idempotent seed: operator + two financial orgs + two subscriber orgs, one user each.
-Passwords come from SS_SEED_* env vars - never hardcoded. Clerks share the clerk
-password and reps share the verifier password (demo/testing accounts)."""
+"""Demo fixtures: two fictional banks, two fictional shops, and the operator.
+
+For demonstrations and manual testing only - the organisations here do not exist. A real
+installation starts with scripts/bootstrap.py, which creates only the operator, and every
+institution after that is added in the engineering panel.
+
+Idempotent. Passwords come from SS_SEED_* env vars and are never hardcoded; clerks share
+the clerk password and reps share the verifier password, which is fine for fictional
+accounts and would not be anywhere else.
+"""
 import os
 import sys
 
@@ -13,17 +20,17 @@ from backend.app import models_db  # noqa: F401
 from backend.app.models_db import Organisation, User
 
 SEED = [
-    ("SecureSign Ltd", "operator", "eng1", "engineer", "SS_SEED_ENGINEER_PASSWORD"),
-    ("Bank A", "financial", "clerk1", "clerk", "SS_SEED_CLERK_PASSWORD"),
-    ("Bank B", "financial", "clerk2", "clerk", "SS_SEED_CLERK_PASSWORD"),
-    ("Shop A", "subscriber", "rep2", "verifier", "SS_SEED_VERIFIER_PASSWORD"),
-    ("Shop B", "subscriber", "rep1", "verifier", "SS_SEED_VERIFIER_PASSWORD"),
+    ("SS00", "SecureSign Ltd", "operator", "eng1", "engineer", "SS_SEED_ENGINEER_PASSWORD"),
+    ("BA11", "Bank A", "financial", "clerk1", "clerk", "SS_SEED_CLERK_PASSWORD"),
+    ("BB22", "Bank B", "financial", "clerk2", "clerk", "SS_SEED_CLERK_PASSWORD"),
+    ("SA33", "Shop A", "subscriber", "rep2", "verifier", "SS_SEED_VERIFIER_PASSWORD"),
+    ("SB44", "Shop B", "subscriber", "rep1", "verifier", "SS_SEED_VERIFIER_PASSWORD"),
 ]
 
 
 def main() -> None:
     passwords = {}
-    for _, _, _, _, env in SEED:
+    for *_, env in SEED:
         value = os.environ.get(env, "")
         if not value:
             sys.exit(f"error: {env} is not set")
@@ -33,10 +40,10 @@ def main() -> None:
     Base.metadata.create_all(engine)
     factory = make_session_factory(engine)
     with factory() as db:
-        for org_name, org_type, username, role, env in SEED:
-            org = db.execute(select(Organisation).where(Organisation.name == org_name)).scalar_one_or_none()
+        for code, org_name, org_type, username, role, env in SEED:
+            org = db.execute(select(Organisation).where(Organisation.code == code)).scalar_one_or_none()
             if org is None:
-                org = Organisation(name=org_name, type=org_type)
+                org = Organisation(code=code, name=org_name, type=org_type)
                 db.add(org)
                 db.flush()
             user = db.execute(select(User).where(User.org_id == org.id,

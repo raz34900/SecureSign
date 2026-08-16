@@ -4,6 +4,9 @@ services:
       context: ../frontend
     ports:
       - "8080:80"
+      # Engineering panel. Bound to the host loopback, so it is unreachable from the
+      # network no matter what the firewall says.
+      - "127.0.0.1:8081:8081"
     depends_on:
       - api
 
@@ -14,7 +17,7 @@ services:
     expose:
       - "8000"
     ports:
-      - "8000:8000"   # direct API access for dev/tests; remove for prod
+      - "127.0.0.1:8000:8000"   # direct API access for dev/tests; remove for prod
     env_file:
       - ../.env
     volumes:

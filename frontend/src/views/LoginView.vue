@@ -6,7 +6,7 @@ import { ApiError } from '../api.js'
 
 const router = useRouter()
 
-const orgName = ref('')
+const orgCode = ref('')
 const username = ref('')
 const password = ref('')
 const errorMessage = ref('')
@@ -16,7 +16,8 @@ async function handleSubmit() {
   errorMessage.value = ''
   pending.value = true
   try {
-    await login(orgName.value, username.value, password.value)
+    // Codes are issued uppercase; typing them lowercase is not a failed login.
+    await login(orgCode.value.trim().toUpperCase(), username.value.trim(), password.value)
     router.push(roleHome())
   } catch (err) {
     errorMessage.value = err instanceof ApiError ? err.message : 'Login failed. Please try again.'
@@ -37,17 +38,22 @@ async function handleSubmit() {
         </div>
 
         <div>
-          <label for="org-name" class="block text-sm font-medium text-ink-muted mb-1">Organization</label>
+          <label for="org-code" class="block text-sm font-medium text-ink-muted mb-1">
+            Organisation code
+          </label>
           <input
-            id="org-name"
-            v-model="orgName"
+            id="org-code"
+            v-model="orgCode"
             type="text"
             required
+            maxlength="12"
+            autocapitalize="characters"
+            spellcheck="false"
             autocomplete="organization"
-            class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
+            class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2 font-mono uppercase"
           />
           <p class="text-xs text-ink-subtle mt-1">
-            Your institution's registered name, for example: Bank A
+            The code issued to your institution, for example: BA11
           </p>
         </div>
 
