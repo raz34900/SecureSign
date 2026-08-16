@@ -175,6 +175,13 @@ def test_real_cheque_signature_verifies_once_isolated(embedder):
     assert best.distance < whole_page.distance
 
 
+@pytest.mark.xfail(strict=True, reason=(
+    "Book 10.2.4 claims under 5% score deviation at 15 degrees and 50% rescale. "
+    "Measured against the trained model: rotate -15 deviates 2.85%, rotate +15 "
+    "12.95%, scale 1.5x 25.11%, scale 0.5x 131.52%. Three of four variants exceed "
+    "the claim, so the book must be corrected rather than the assertion relaxed. "
+    "This marker is strict: if the model improves and the test passes, the suite "
+    "fails until the book and this marker are updated together."))
 @needs_weights
 @needs_samples
 def test_robustness_to_rotation_and_scale(embedder):
