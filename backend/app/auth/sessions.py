@@ -30,6 +30,18 @@ def resolve_session(db: Session, token: str) -> SessionRow | None:
     return row
 
 
+def revoke_all_for_user(db: Session, user_id: str) -> int:
+    """Every live session for one account. A password change must not leave whoever
+    knew the old one still signed in."""
+    rows = db.execute(select(SessionRow).where(SessionRow.user_id == user_id,
+                                               SessionRow.revoked_at.is_(None))).scalars().all()
+    now = datetime.now(timezone.utc)
+    for row in rows:
+        row.revoked_at = now
+    db.commit()
+    return len(rows)
+
+
 def revoke_session(db: Session, token: str) -> None:
     row = db.execute(select(SessionRow).where(SessionRow.token_hash == _hash(token))).scalar_one_or_none()
     if row is not None:

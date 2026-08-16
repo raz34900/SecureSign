@@ -17,13 +17,13 @@ def test_invalid_session_cookie(client, seeded):
 
 
 def test_path_traversal_in_national_id(client, seeded):
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     r = verify(client, "../../etc/passwd", png(make_signature()))
     assert r.status_code == 422  # rejected by ^\d{9}$ validation
 
 
 def test_oversized_upload(client, seeded):
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     big = b"\x00" * (11 * 1024 * 1024)  # 11 MB > 10 MB cap
     r = client.post("/verify", data={"national_id": "123456789"},
                     files={"file": ("big.png", big, "image/png")})
@@ -32,7 +32,7 @@ def test_oversized_upload(client, seeded):
 
 
 def test_error_messages_leak_nothing(client, seeded):
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     r = verify(client, "999999997", png(make_signature()))
     msg = r.json()["error"]["message"]
     for fragment in ("/Users", "/home", "Traceback", ".py", "sqlite", "SELECT"):
@@ -40,7 +40,7 @@ def test_error_messages_leak_nothing(client, seeded):
 
 
 def test_denied_cross_role_lands_in_audit(client, seeded, session_factory):
-    login(client, "Shop B", "rep1")  # verifier tries clerk-only endpoint
+    login(client, "SB44", "rep1")  # verifier tries clerk-only endpoint
     r = client.post("/customers", json={"national_id": "123456786", "full_name": "X",
                                         "consent": {"granted": True, "method": "in_person"}})
     assert r.status_code == 403

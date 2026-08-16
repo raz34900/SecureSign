@@ -10,15 +10,31 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Called whenever the server rejects us as unauthenticated. Registered by auth.js,
+ * which cannot be imported here without a cycle.
+ *
+ * Without this, a session that dies server-side (expiry, revocation, a rebuilt
+ * database) leaves the app believing it is still signed in. Every request then fails
+ * while the router keeps bouncing /login back to the role's home page, and the only
+ * way out is clearing site data by hand.
+ */
+let onUnauthorized = null
+
+export function setUnauthorizedHandler(handler) {
+  onUnauthorized = handler
+}
+
 async function handleResponse(res) {
   let body = null
   try {
     body = await res.json()
   } catch {
-    body = null
+    body = null // a proxy can answer with HTML; treat it as an empty envelope
   }
 
   if (!res.ok) {
+    if (res.status === 401 && onUnauthorized) onUnauthorized()
     const error = body && body.error
     throw new ApiError(
       error?.code ?? 'UNKNOWN',

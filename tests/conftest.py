@@ -50,14 +50,24 @@ def client(app):
 
 
 @pytest.fixture
+def other_client(app):
+    """A second, independent session against the same app — for tests where one account
+    acts on another that is signed in at the same time."""
+    return TestClient(app)
+
+
+@pytest.fixture
 def seeded(session_factory):
-    """5 orgs (2 financial, 2 subscriber, operator), 5 users. Password for all: 'pw123456'."""
+    """5 orgs (2 financial, 2 subscriber, operator), 5 users. Password for all: 'pw123456'.
+
+    Organisations log in by code (BA11), never by display name — see login() below.
+    """
     with session_factory() as db:
-        op = Organisation(name="SecureSign Ltd", type="operator")
-        bank = Organisation(name="Bank A", type="financial")
-        bank2 = Organisation(name="Bank B", type="financial")
-        shop2 = Organisation(name="Shop A", type="subscriber")
-        shop = Organisation(name="Shop B", type="subscriber")
+        op = Organisation(code="SS00", name="SecureSign Ltd", type="operator")
+        bank = Organisation(code="BA11", name="Bank A", type="financial")
+        bank2 = Organisation(code="BB22", name="Bank B", type="financial")
+        shop2 = Organisation(code="SA33", name="Shop A", type="subscriber")
+        shop = Organisation(code="SB44", name="Shop B", type="subscriber")
         db.add_all([op, bank, bank2, shop, shop2])
         db.flush()
         pw = hash_password("pw123456")
@@ -73,5 +83,6 @@ def seeded(session_factory):
                 "shop": shop.id, "shop2": shop2.id}
 
 
-def login(client, org_name: str, username: str, password: str = "pw123456"):
-    return client.post("/auth/login", json={"org_name": org_name, "username": username, "password": password})
+def login(client, org_code: str, username: str, password: str = "pw123456"):
+    return client.post("/auth/login",
+                       json={"org_code": org_code, "username": username, "password": password})

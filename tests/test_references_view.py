@@ -5,7 +5,7 @@ from test_enrolment import do_full_enrolment
 
 
 def test_clerk_own_org_can_view_references(client, seeded):
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     cust_id = do_full_enrolment(client, "123456790")
     r = client.get(f"/customers/{cust_id}/references")
     assert r.status_code == 200, r.text
@@ -18,27 +18,27 @@ def test_clerk_own_org_can_view_references(client, seeded):
 
 
 def test_clerk_other_org_gets_404(client, seeded):
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     cust_id = do_full_enrolment(client, "123456791")
     client.cookies.clear()
 
-    login(client, "Bank B", "clerk2")
+    login(client, "BB22", "clerk2")
     r = client.get(f"/customers/{cust_id}/references")
     assert r.status_code == 404
 
 
 def test_verifier_forbidden(client, seeded):
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     cust_id = do_full_enrolment(client, "123456792")
     client.cookies.clear()
 
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     r = client.get(f"/customers/{cust_id}/references")
     assert r.status_code == 403
 
 
 def test_audit_row_written_on_success(client, seeded, session_factory):
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     cust_id = do_full_enrolment(client, "123456793")
     r = client.get(f"/customers/{cust_id}/references")
     assert r.status_code == 200

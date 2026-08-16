@@ -17,7 +17,7 @@ def verify(client, nid: str, image_bytes: bytes):
 
 
 def test_verify_unknown_customer_404_with_sanity(client, seeded):
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     r = verify(client, "999999998", png(make_signature()))
     assert r.status_code == 404
     assert r.json()["error"]["code"] == "CUSTOMER_NOT_FOUND"
@@ -25,10 +25,10 @@ def test_verify_unknown_customer_404_with_sanity(client, seeded):
 
 
 def test_verify_cross_org_returns_decision_only(client, seeded, session_factory):
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     do_full_enrolment(client, "123456784")
     client.cookies.clear()
-    login(client, "Shop B", "rep1")  # different org — cross-org verify allowed
+    login(client, "SB44", "rep1")  # different org — cross-org verify allowed
     r = verify(client, "123456784", png(make_signature(seed=42)))
     assert r.status_code == 200, r.text
     body = r.json()
@@ -47,10 +47,10 @@ def test_verify_cross_org_returns_decision_only(client, seeded, session_factory)
 
 
 def test_verify_blank_image_rejected(client, seeded):
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     do_full_enrolment(client, "123456784")
     client.cookies.clear()
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     from PIL import Image
     r = verify(client, "123456784", png(Image.new("L", (300, 200), 255)))
     assert r.status_code == 422
@@ -58,7 +58,7 @@ def test_verify_blank_image_rejected(client, seeded):
 
 
 def test_verify_forbidden_for_engineer(client, seeded):
-    login(client, "SecureSign Ltd", "eng1")
+    login(client, "SS00", "eng1")
     r = verify(client, "123456784", png(make_signature()))
     assert r.status_code == 403
 
@@ -76,7 +76,7 @@ def test_query_preview_is_the_normalised_image_the_model_compared(client, seeded
 
     from PIL import Image as _Image
 
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     do_full_enrolment(client, "123456790")
     body = verify(client, "123456790", png(make_signature(seed=11))).json()
 
@@ -86,9 +86,9 @@ def test_query_preview_is_the_normalised_image_the_model_compared(client, seeded
 
 def test_query_preview_reaches_the_subscriber_role_too(client, seeded):
     """It is the caller's own upload, so withholding it would help nobody."""
-    login(client, "Bank A", "clerk1")
+    login(client, "BA11", "clerk1")
     do_full_enrolment(client, "123456791")
     client.cookies.clear()
-    login(client, "Shop B", "rep1")
+    login(client, "SB44", "rep1")
     body = verify(client, "123456791", png(make_signature(seed=12))).json()
     assert body["query_preview_png_base64"]

@@ -1,29 +1,39 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { state, isClerk, isVerifier, logout } from '../auth.js'
+import {
+  state, isClerk, isVerifier, isEngineer, isOrgAdmin, mustChangePassword, logout,
+} from '../auth.js'
 
 const route = useRoute()
 const router = useRouter()
 
 const showNav = computed(() => route.path !== '/login')
 
+// While a handed-out password is still in force nothing else is reachable, so offering
+// the links would only produce bounces.
 const links = computed(() => {
-  if (isClerk.value) {
+  if (mustChangePassword.value) return []
+  if (isEngineer.value) {
     return [
-      { to: '/enrol', label: 'Enrol' },
-      { to: '/verify', label: 'Verify' },
-      { to: '/customers', label: 'Customers' },
-      { to: '/history', label: 'History' },
+      { to: '/engineering', label: 'Model' },
+      { to: '/accounts', label: 'Accounts' },
     ]
   }
-  if (isVerifier.value) {
-    return [
-      { to: '/verify', label: 'Verify' },
-      { to: '/history', label: 'History' },
-    ]
-  }
-  return []
+  const forRole = isClerk.value
+    ? [
+        { to: '/enrol', label: 'Enrol' },
+        { to: '/verify', label: 'Verify' },
+        { to: '/customers', label: 'Customers' },
+        { to: '/history', label: 'History' },
+      ]
+    : isVerifier.value
+      ? [
+          { to: '/verify', label: 'Verify' },
+          { to: '/history', label: 'History' },
+        ]
+      : []
+  return isOrgAdmin.value ? [...forRole, { to: '/team', label: 'Team' }] : forRole
 })
 
 async function handleLogout() {
@@ -57,9 +67,19 @@ async function handleLogout() {
         <div class="ml-auto flex items-center gap-3">
           <span class="hidden text-right leading-tight sm:block">
             <span class="block text-sm font-medium">{{ state.user?.org_name }}</span>
-            <span class="block text-xs text-white/70">{{ state.user?.username }}</span>
+            <span class="block text-xs text-white/70">
+              {{ state.user?.username }}
+              <span v-if="state.user?.org_code" class="font-mono">({{ state.user.org_code }})</span>
+            </span>
           </span>
           <span class="text-sm text-white/80 sm:hidden">{{ state.user?.username }}</span>
+          <router-link
+            v-if="!mustChangePassword"
+            :to="{ name: 'change-password', query: { voluntary: '1' } }"
+            class="min-h-11 hidden items-center rounded px-3 text-sm font-medium text-white/85 hover:bg-white/10 hover:text-white sm:flex"
+          >
+            Password
+          </router-link>
           <button
             class="min-h-11 rounded bg-brand-green px-4 text-sm font-semibold text-navy transition-colors hover:brightness-95"
             @click="handleLogout"
