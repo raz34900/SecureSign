@@ -68,9 +68,19 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
 
     query_img = Image.open(io.BytesIO(image_bytes)).convert("L")
     query_vec = embedder.embed(query_img)
-    refs = references_repo.all_for(db, customer.id)
-    distances = [float(np.linalg.norm(np.frombuffer(ref.embedding, dtype=np.float32) - query_vec))
-                 for ref in refs]
+    refs, distances = [], []
+    for ref in references_repo.all_for(db, customer.id):
+        vector = references_repo.decode_embedding(ref.embedding)
+        if vector is None:
+            continue  # one damaged row must not fail the whole comparison
+        refs.append(ref)
+        distances.append(float(np.linalg.norm(vector - query_vec)))
+
+    if not distances:
+        raise AppError("REFERENCES_UNREADABLE",
+                       "This customer's reference signatures could not be read. "
+                       "The enrolling institution needs to re-enrol them.", 500)
+
     result = decide(distances, settings.threshold)
 
     row = verifications_repo.add(db, customer_id=customer.id, org_id=org_id, user_id=user_id,

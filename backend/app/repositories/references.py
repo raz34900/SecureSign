@@ -6,6 +6,16 @@ from sqlalchemy.orm import Session
 
 from backend.app.models_db import ReferenceSignature
 
+EMBEDDING_DIM = 128
+EMBEDDING_BYTES = EMBEDDING_DIM * 4
+
+
+def decode_embedding(blob: bytes | None) -> np.ndarray | None:
+    """None for a row that is not a usable vector; callers skip it rather than crashing."""
+    if not blob or len(blob) != EMBEDDING_BYTES:
+        return None
+    return np.frombuffer(blob, dtype=np.float32)
+
 
 def add(db: Session, customer_id: str, org_id: str, image_path: str,
         embedding: np.ndarray) -> ReferenceSignature:
@@ -24,7 +34,8 @@ def all_for(db: Session, customer_id: str) -> list[ReferenceSignature]:
 def embeddings_for(db: Session, customer_id: str) -> list[np.ndarray]:
     rows = db.execute(select(ReferenceSignature.embedding)
                       .where(ReferenceSignature.customer_id == customer_id)).scalars().all()
-    return [np.frombuffer(b, dtype=np.float32) for b in rows]
+    decoded = (decode_embedding(blob) for blob in rows)
+    return [vector for vector in decoded if vector is not None]
 
 
 def own_references(db: Session, customer_id: str, org_id: str) -> list[ReferenceSignature]:
