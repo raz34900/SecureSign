@@ -14,3 +14,5 @@ build/
 tmp/
 docs/
 .planning/
+deploy/tls/*.crt
+deploy/tls/*.key
