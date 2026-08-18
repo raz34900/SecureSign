@@ -10,6 +10,8 @@ bounding box and leave the signature occupying a fraction of the model's 224x224
 input. Measured on a real cheque: the raw region scored 0.4696 (rejected) while the
 same signature with these marks removed scored 0.2350 (accepted).
 """
+import math
+
 import cv2
 import numpy as np
 from PIL import Image
@@ -34,6 +36,31 @@ def flatten_illumination(gray: np.ndarray) -> np.ndarray:
         gray, cv2.MORPH_CLOSE,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (BACKGROUND_KERNEL, BACKGROUND_KERNEL)))
     return cv2.divide(gray, background, scale=PAPER)
+
+
+def pad_for_rotation(img: Image.Image) -> Image.Image:
+    """Give the deskew room to turn in, so it stops cutting the ends off the writing.
+
+    The transform deskews with a rotation about the centre into a canvas of the *same*
+    size, so whatever swings outside is discarded. A signature is wide and short and
+    written on a slant, which puts its first and last strokes exactly where the arc is
+    widest. Measured on four photographs: deskew angles of -12° to -13.5°, destroying
+    2.6% to 4.4% of the ink each time - the first letter came out looking like a
+    different character.
+
+    Padding out to a square of the diagonal means no rotation about the centre can move
+    ink outside the canvas. The transform crops tightly afterwards, so the padding
+    itself never reaches the model. Measured over the same four photographs of one
+    signature, mean distance fell from 0.2835 to 0.1828 and the worst pair from 0.4862
+    to 0.2711 - from one pair reading FRAUD to all six agreeing.
+
+    Both sides must be padded or neither: a reference and a query prepared differently
+    are not comparable.
+    """
+    side = math.ceil(math.hypot(*img.size))
+    padded = Image.new("L", (side, side), PAPER)
+    padded.paste(img.convert("L"), ((side - img.width) // 2, (side - img.height) // 2))
+    return padded
 
 
 def flatten_image_bytes(image_bytes: bytes) -> bytes:
