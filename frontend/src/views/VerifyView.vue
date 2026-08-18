@@ -50,6 +50,11 @@ const activeRegion = computed(() =>
 
 const submissionFile = computed(() => activeRegion.value?.file ?? originalFile.value)
 
+/* What the whole picture looks like once the model has normalised it. Choosing the whole
+   image sends the original photograph, which /verify neither extracts nor cleans, so
+   this is the only chance to see what is really being compared before committing. */
+const wholePreview = ref('')
+
 const previewUrl = computed(() =>
   activeRegion.value
     ? `data:image/png;base64,${activeRegion.value.image}`
@@ -315,6 +320,7 @@ function clearFile() {
 
 function clearRegions() {
   regions.value = []
+  wholePreview.value = ''
   chosenRegion.value = null
 }
 
@@ -338,10 +344,15 @@ async function findRegions(chosen) {
     const found = Array.isArray(data?.regions) ? data.regions : []
     regions.value = found.map((region, order) => ({
       position: order + 1,
+      // Two different images on purpose. `image` is a thumbnail to look at; a phone
+      // cannot hold several full-resolution bitmaps decoded at once and reclaims memory
+      // by discarding the page. `file` is the full-resolution region, which is what
+      // gets submitted, because downscaling before preparation moves the distance.
       image: region.preview_png_base64,
       clipped: !!region.clipped,
-      file: base64ToFile(region.preview_png_base64, `signature-${order + 1}.png`),
+      file: base64ToFile(region.image_png_base64, `signature-${order + 1}.png`),
     }))
+    wholePreview.value = data?.whole_preview_png_base64 ?? ''
     if (regions.value.length === 0) chosenRegion.value = 'whole'
     else if (regions.value.length === 1) chosenRegion.value = 1
     else chosenRegion.value = null
@@ -583,6 +594,20 @@ async function reset() {
             Part of the signature runs off the edge of the picture. Photograph it again
             with the whole signature inside the frame, including any trailing stroke.
           </p>
+
+          <!-- The whole picture is submitted as photographed, so the only way to see what
+               is really being compared is to show it normalised, before it is sent. -->
+          <div v-if="chosenRegion === 'whole' && wholePreview" class="mt-3 border-t border-border pt-3">
+            <img
+              :src="'data:image/png;base64,' + wholePreview"
+              alt="The whole image as the model will read it"
+              class="mx-auto max-h-40 w-auto rounded border border-border bg-surface"
+            />
+            <p class="mt-2 text-center text-xs text-ink-muted">
+              The whole image as the model will read it. Anything else on the page is
+              compared along with the signature, which can make a genuine one look wrong.
+            </p>
+          </div>
         </div>
 
         <!-- One region: used on its own, with a way back to the full picture. -->

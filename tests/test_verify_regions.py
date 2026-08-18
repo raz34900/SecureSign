@@ -3,6 +3,7 @@
 Verification embeds whatever ink it is handed. Without this step a genuine signature
 photographed on a printed form embeds the form, and comes back FRAUD.
 """
+import base64
 import io
 
 from PIL import Image, ImageDraw
@@ -35,6 +36,41 @@ def make_printed_document() -> bytes:
 def post_regions(client, image_bytes: bytes, filename: str = "doc.jpg"):
     return client.post("/verify/regions",
                        files={"file": (filename, image_bytes, "image/jpeg")})
+
+
+def make_phone_photograph() -> bytes:
+    """One signature filling a frame the size a phone actually produces."""
+    photo = Image.new("L", (4032, 3024), 250)
+    photo.paste(make_signature(seed=6).resize((3000, 1400)), (500, 800))
+    buffer = io.BytesIO()
+    photo.convert("RGB").save(buffer, format="JPEG", quality=92)
+    return buffer.getvalue()
+
+
+def test_the_browser_is_shown_a_thumbnail_and_submits_the_full_region(client, seeded):
+    """Two images per region, and the difference is not cosmetic.
+
+    A decoded bitmap costs four bytes a pixel in the tab regardless of what the PNG
+    weighs, so displaying full-resolution regions from a phone photograph cost ~23 MB
+    each. A phone reclaims memory by discarding the page, which reloads it and empties
+    the form mid-verification. The submitted image stays full resolution because
+    preparing a downscaled region moves the embedding distance by up to 0.47.
+    """
+    from backend.app.routers.verify import PREVIEW_EDGE
+
+    login(client, "SB44", "rep1")
+    regions = post_regions(client, make_phone_photograph(), "photo.jpg").json()["regions"]
+    assert regions
+
+    for region in regions:
+        shown = Image.open(io.BytesIO(base64.b64decode(region["preview_png_base64"])))
+        submitted = Image.open(io.BytesIO(base64.b64decode(region["image_png_base64"])))
+        assert max(shown.size) <= PREVIEW_EDGE
+        assert submitted.size >= shown.size
+
+    biggest = max(regions, key=lambda r: len(r["image_png_base64"]))
+    full = Image.open(io.BytesIO(base64.b64decode(biggest["image_png_base64"])))
+    assert max(full.size) > PREVIEW_EDGE, "fixture too small to prove anything"
 
 
 def test_document_yields_multiple_candidate_regions(client, seeded):

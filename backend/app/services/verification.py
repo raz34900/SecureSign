@@ -20,7 +20,7 @@ from signature_core.quality import validate_image_quality
 log = logging.getLogger("securesign")
 
 
-def _query_preview(query_img: Image.Image) -> str:
+def query_preview(query_img: Image.Image) -> str:
     """The normalised image the comparison actually ran on.
 
     Showing the clerk their own photograph hides capture problems: a shadow, a fold or
@@ -110,7 +110,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         "confidence": round(result.confidence, 1),
         "model_version": settings.model_version,
         "verified_at": row.created_at.isoformat() + "Z",
-        "query_preview_png_base64": _query_preview(query_img),
+        "query_preview_png_base64": query_preview(query_img),
     }
     if include_references:
         response["references"] = _reference_views(refs, distances, result.threshold)
