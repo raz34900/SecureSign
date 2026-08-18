@@ -44,18 +44,33 @@ def app(session_factory, monkeypatch, tmp_path):
     return create_app(session_factory=session_factory, embedder=FakeEmbedder())
 
 
+@pytest.fixture(autouse=True)
+def _clean_login_throttle():
+    """Failed sign-ins are counted per account in module state. Several tests sign in
+    wrongly on purpose; without this they would spend each other's allowance."""
+    from backend.app.auth import throttle
+    throttle.reset()
+    yield
+    throttle.reset()
+
+
+def make_client(app) -> TestClient:
+    """https, not http: the session cookie is set Secure, and a client on a plain-http
+    base URL silently drops it - the test then fails as 401 for the wrong reason.
+    Build every client through here rather than calling TestClient directly."""
+    return TestClient(app, base_url="https://testserver")
+
+
 @pytest.fixture
 def client(app):
-    # https, not http: the session cookie is set Secure, and a client on a plain-http
-    # base URL silently drops it - every auth test would fail for the wrong reason.
-    return TestClient(app, base_url="https://testserver")
+    return make_client(app)
 
 
 @pytest.fixture
 def other_client(app):
     """A second, independent session against the same app - for tests where one account
     acts on another that is signed in at the same time."""
-    return TestClient(app, base_url="https://testserver")
+    return make_client(app)
 
 
 @pytest.fixture

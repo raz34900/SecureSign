@@ -47,10 +47,10 @@ def enrolled(client, seeded):
 
 
 def test_ten_concurrent_clients_stay_under_the_latency_budget(app, enrolled, seeded):
-    from fastapi.testclient import TestClient
+    from conftest import make_client
 
     def one_client(index: int) -> list[float]:
-        session = TestClient(app)
+        session = make_client(app)
         login(session, "SB44", "rep1")
         timings = []
         for _ in range(REQUESTS_PER_CLIENT):
@@ -77,10 +77,10 @@ def test_ten_concurrent_clients_stay_under_the_latency_budget(app, enrolled, see
 
 def test_concurrent_verifications_are_all_recorded(app, enrolled, seeded, session_factory):
     """No lost writes: every request that returned 200 has a row behind it."""
-    from fastapi.testclient import TestClient
+    from conftest import make_client
 
     def one_client(index: int) -> int:
-        session = TestClient(app)
+        session = make_client(app)
         login(session, "SB44", "rep1")
         ok = 0
         for _ in range(REQUESTS_PER_CLIENT):

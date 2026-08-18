@@ -5,7 +5,7 @@ from pydantic import BaseModel, StringConstraints
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.auth import sessions
+from backend.app.auth import sessions, throttle
 from backend.app.auth.deps import CurrentUser, get_current_user, get_db
 from backend.app.auth.passwords import verify_password
 from backend.app.config import get_settings
@@ -36,13 +36,22 @@ class ChangePasswordRequest(BaseModel):
 
 @router.post("/login")
 def login(body: LoginRequest, response: Response, db: Session = Depends(get_db)) -> dict:
+    wait = throttle.retry_after(body.org_code, body.username)
+    if wait:
+        raise AppError("TOO_MANY_ATTEMPTS",
+                       "Too many failed sign-in attempts for this account. "
+                       f"Try again in {max(1, wait // 60)} minute(s).", 429,
+                       headers={"Retry-After": str(wait)})
+
     org = db.execute(select(Organisation).where(Organisation.code == body.org_code)).scalar_one_or_none()
     user = None
     if org is not None and org.is_active:
         user = db.execute(select(User).where(User.org_id == org.id,
                                              User.username == body.username)).scalar_one_or_none()
     if user is None or not user.is_active or not verify_password(user.password_hash, body.password):
+        throttle.record_failure(body.org_code, body.username)
         raise AppError("AUTH_INVALID", _GENERIC, 401)
+    throttle.clear(body.org_code, body.username)
     token = sessions.create_session(db, user.id, get_settings().session_ttl_hours)
     # Secure: every entrypoint is TLS and port 80 only redirects, so there is no request
     # this cookie legitimately rides in the clear. Without it a single forced plaintext
