@@ -61,7 +61,7 @@ def test_cropped_signature_needs_no_selection(client, seeded):
     login(client, "SB44", "rep1")
     response = post_regions(client, png(make_signature()), filename="sig.png")
     assert response.status_code == 200
-    assert len(response.json()["regions"]) <= 1
+    assert len(response.json()["regions"]) == 1
 
 
 def test_regions_rejects_blank_image(client, seeded):
@@ -95,3 +95,15 @@ def test_regions_are_capped(client, seeded):
 
     regions = post_regions(client, buffer.getvalue()).json()["regions"]
     assert len(regions) <= MAX_REGIONS
+
+
+def test_a_tight_close_up_still_gets_a_prepared_region(client, seeded):
+    """The bug this guards: a close-up yields no sub-region, and the caller used to fall
+    back to submitting the raw original - unprepared, while every reference was
+    prepared. Same photo, different preparation, unusable comparison."""
+    login(client, "SB44", "rep1")
+    response = post_regions(client, png(make_signature()), filename="closeup.png")
+    assert response.status_code == 200
+    regions = response.json()["regions"]
+    assert len(regions) == 1, "a close-up must still offer exactly one prepared region"
+    assert regions[0]["preview_png_base64"]

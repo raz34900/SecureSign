@@ -38,6 +38,13 @@ def _extract_regions(image_bytes: bytes) -> list[dict]:
         cleaned = isolate_signature_ink(crop)
         candidates.append((_ink_fraction(cleaned), cleaned))
 
+    if not candidates:
+        # A tight close-up has no distinct sub-region to offer. Return the whole frame
+        # prepared the same way, so the caller never submits an unprepared image: a
+        # reference and a query that were prepared differently are not comparable.
+        whole = isolate_signature_ink(Image.open(io.BytesIO(image_bytes)).convert("L"))
+        candidates.append((_ink_fraction(whole), whole))
+
     candidates.sort(key=lambda item: item[0])
 
     regions = []
