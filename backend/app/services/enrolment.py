@@ -23,7 +23,7 @@ from backend.app.models_db import ConsentRecord, Customer
 from backend.app.repositories import audit, customers as customers_repo, references as references_repo
 from backend.app.security.crypto import blind_index, encrypt_pii
 from signature_core.anchors import extract_vertical_anchors
-from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink
+from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink, pad_for_rotation
 from signature_core.decision import decide
 
 _TTL_SECONDS = 15 * 60
@@ -128,7 +128,8 @@ def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_d
                  crops: list[Image.Image], vectors: list[np.ndarray] | None = None) -> None:
     os.makedirs(os.path.join(samples_dir, customer_id), exist_ok=True)
     for index, crop in enumerate(crops):
-        embedding = vectors[index] if vectors is not None else embedder.embed(crop)
+        embedding = (vectors[index] if vectors is not None
+                     else embedder.embed(pad_for_rotation(crop)))
         ref = references_repo.add(db, customer_id, org_id, image_path="", embedding=embedding)
         db.flush()
         path = os.path.join(samples_dir, customer_id, f"{ref.id}.png")
@@ -157,7 +158,7 @@ def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Im
         raise AppError("INSUFFICIENT_SIGNATURES",
                        f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
     settings = get_settings()
-    vectors = [embedder.embed(crop) for crop in selected]
+    vectors = [embedder.embed(pad_for_rotation(crop)) for crop in selected]
     _reject_inconsistent(vectors, settings.threshold)
 
     customer = Customer(
@@ -209,7 +210,7 @@ def _approve_append(db: Session, embedder, staged: _Staged, selected: list[Image
                        "so new signatures cannot be checked against them.", 500)
     vectors, worst, mismatch = [], 0.0, False
     for crop in selected:
-        vector = embedder.embed(crop)
+        vector = embedder.embed(pad_for_rotation(crop))
         vectors.append(vector)
         if not existing:
             continue

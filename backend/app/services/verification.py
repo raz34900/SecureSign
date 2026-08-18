@@ -13,6 +13,7 @@ from backend.app.models_db import ReferenceSignature
 from backend.app.repositories import audit, customers as customers_repo, references as references_repo
 from backend.app.repositories import verifications as verifications_repo
 from backend.app.security.crypto import blind_index
+from signature_core.cleanup import pad_for_rotation
 from signature_core.decision import calculate_confidence, decide
 from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.quality import validate_image_quality
@@ -28,7 +29,7 @@ def query_preview(query_img: Image.Image) -> str:
     This is the same deterministic transform the embedder applies, so it is exactly
     what was compared, and a bad capture is obvious at a glance.
     """
-    normalised = UnifiedSignatureTransform()(query_img)
+    normalised = UnifiedSignatureTransform()(pad_for_rotation(query_img))
     buffer = io.BytesIO()
     ImageOps.invert(normalised.convert("L")).save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode()
@@ -70,7 +71,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         raise AppError("INVALID_IMAGE", quality_msg, 422)
 
     query_img = Image.open(io.BytesIO(image_bytes)).convert("L")
-    query_vec = embedder.embed(query_img)
+    query_vec = embedder.embed(pad_for_rotation(query_img))
     refs, distances = [], []
     skipped = 0
     for ref in references_repo.all_for(db, customer.id):

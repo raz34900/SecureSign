@@ -24,7 +24,7 @@ from backend.app.config import get_settings
 from backend.app.db import make_engine, make_session_factory
 from backend.app import models_db  # noqa: F401
 from backend.app.models_db import ReferenceSignature
-from signature_core.cleanup import isolate_signature_ink
+from signature_core.cleanup import isolate_signature_ink, pad_for_rotation
 from signature_core.embed import Embedder
 
 
@@ -52,7 +52,7 @@ def main() -> int:
                 continue
 
             # The same two steps enrolment and verification run.
-            vector = embedder.embed(isolate_signature_ink(image))
+            vector = embedder.embed(pad_for_rotation(isolate_signature_ink(image)))
             before = np.frombuffer(ref.embedding, dtype=np.float32)
             moved = float(np.linalg.norm(vector - before)) if len(before) == 128 else float("inf")
 

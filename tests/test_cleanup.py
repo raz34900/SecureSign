@@ -12,6 +12,7 @@ import base64
 import io
 from pathlib import Path
 
+import cv2
 import numpy as np
 import pytest
 from PIL import Image, ImageDraw
@@ -199,6 +200,50 @@ def test_enrolment_finds_every_signature_on_a_shadowed_card(client, seeded):
                            files={"file": ("card.jpg", shadowed_card(9), "image/jpeg")})
     assert response.status_code == 200, response.text
     assert len(response.json()["crops"]) == 9
+
+
+@pytest.mark.parametrize("module", [
+    "backend/app/services/enrolment.py",
+    "backend/app/services/verification.py",
+    "scripts/reembed_references.py",
+])
+def test_nothing_reaches_the_model_without_room_to_deskew(module):
+    """Guard rail, and the reason it needs to be one.
+
+    The transform deskews by rotating into a canvas of its own size, so ink that swings
+    outside is thrown away — measured at 2.6-4.4% on real photographs, taken off the
+    first and last strokes. `pad_for_rotation` gives it room. An embedding made without
+    it is not comparable with one made with it, so a single call site left unpadded
+    silently corrupts every comparison against those references rather than failing.
+    """
+    source = (REPO_ROOT / module).read_text()
+    for line in source.splitlines():
+        if ".embed(" in line or "UnifiedSignatureTransform()(" in line:
+            assert "pad_for_rotation" in line, f"{module}: unpadded — {line.strip()}"
+
+
+def test_padding_survives_the_rotation_the_transform_applies():
+    """The property that matters: after padding, deskew destroys no ink."""
+    from signature_core.cleanup import pad_for_rotation
+
+    wide = Image.new("L", (1200, 300), 255)
+    wide.paste(make_signature(seed=11).resize((1100, 240)), (50, 30))
+
+    def ink_through_deskew(img):
+        pixels = np.array(img.convert("L"))
+        _, mask = cv2.threshold(cv2.GaussianBlur(pixels, (5, 5), 0), 0, 255,
+                                cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+        height, width = pixels.shape[:2]
+        rotation = cv2.getRotationMatrix2D((width // 2, height // 2), 20.0, 1.0)
+        turned = cv2.warpAffine(mask, rotation, (width, height), flags=cv2.INTER_CUBIC,
+                                borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+        return int(mask.sum()), int(turned.sum())
+
+    before, after = ink_through_deskew(wide)
+    assert after < before, "fixture does not actually lose ink to rotation"
+
+    before, after = ink_through_deskew(pad_for_rotation(wide))
+    assert after >= 0.999 * before
 
 
 def test_flattening_is_idempotent():
