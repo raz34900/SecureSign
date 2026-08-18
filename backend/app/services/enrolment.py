@@ -25,6 +25,7 @@ from backend.app.security.crypto import blind_index, encrypt_pii
 from signature_core.anchors import extract_vertical_anchors
 from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink, pad_for_rotation
 from signature_core.decision import decide
+from signature_core.quality import looks_like_signature
 
 _TTL_SECONDS = 15 * 60
 # Eight, not five: five was measured at ~20% false rejection on genuine signatures.
@@ -90,7 +91,12 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
     staged = _get(enrolment_id, org_id)
     # Flatten first: extraction thresholds globally and cannot see past a shadow.
     even = flatten_image_bytes(image_bytes)
-    crops = [isolate_signature_ink(crop) for crop in extract_vertical_anchors(even)]
+    # Drop what cannot be handwriting before counting. The dark edge of a photographed
+    # page extracts as a region like any other, and it then fails the consistency check
+    # against the real specimens - which reads to the clerk as their card being rejected.
+    crops = [crop for crop in
+             (isolate_signature_ink(crop) for crop in extract_vertical_anchors(even))
+             if looks_like_signature(np.asarray(crop.convert("L")))]
 
     appending = staged.target_customer_id is not None
     required = MIN_APPEND_REFS if appending else MIN_REFS
@@ -115,9 +121,14 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
 def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
             samples_dir: str, org_id: str) -> Customer:
     staged = _get(enrolment_id, org_id)
-    selected = [staged.crops[c] for c in crop_ids if c in staged.crops]
+    # Numbered by position on the card, which is the order the clerk sees them in and
+    # the only numbering an error message can refer to usefully.
+    order = {crop_id: position for position, crop_id in enumerate(staged.crops, start=1)}
+    chosen = [(order[c], staged.crops[c]) for c in crop_ids if c in staged.crops]
+    positions = [position for position, _ in chosen]
+    selected = [crop for _, crop in chosen]
     if staged.target_customer_id is None:
-        customer = _approve_new(db, embedder, staged, selected, samples_dir)
+        customer = _approve_new(db, embedder, staged, selected, samples_dir, positions)
     else:
         customer = _approve_append(db, embedder, staged, selected, samples_dir)
     del _store[enrolment_id]
@@ -137,7 +148,8 @@ def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_d
         ref.image_path = path
 
 
-def _reject_inconsistent(vectors: list[np.ndarray], threshold: float) -> None:
+def _reject_inconsistent(vectors: list[np.ndarray], threshold: float,
+                         positions: list[int]) -> None:
     """DEF-06. Each specimen is scored against the others by the same rule verification
     uses, so a crop that would read as a different writer never reaches the registry."""
     if len(vectors) < 2:
@@ -147,19 +159,20 @@ def _reject_inconsistent(vectors: list[np.ndarray], threshold: float) -> None:
         result = decide([float(np.linalg.norm(other - vector)) for other in others], threshold)
         if result.verdict == "FRAUD":
             raise AppError("INCONSISTENT_REFERENCES",
-                           f"Specimen {index + 1} does not match the others on this card "
-                           f"(distance {result.distance:.4f}). Deselect it and approve "
-                           "the rest, or rescan the card.", 422)
+                           f"Signature {positions[index]} does not match the others on "
+                           f"this card (distance {result.distance:.4f}). Deselect it and "
+                           "approve the rest, or rescan the card.", 422,
+                           headers=None) from None
 
 
 def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Image],
-                 samples_dir: str) -> Customer:
+                 samples_dir: str, positions: list[int]) -> Customer:
     if not (MIN_REFS <= len(selected) <= MAX_REFS):
         raise AppError("INSUFFICIENT_SIGNATURES",
                        f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
     settings = get_settings()
     vectors = [embedder.embed(pad_for_rotation(crop)) for crop in selected]
-    _reject_inconsistent(vectors, settings.threshold)
+    _reject_inconsistent(vectors, settings.threshold, positions)
 
     customer = Customer(
         national_id_encrypted=encrypt_pii(staged.national_id, settings.pii_enc_key),

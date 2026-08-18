@@ -251,3 +251,33 @@ def test_flattening_is_idempotent():
     once = flatten_image_bytes(shadowed_card(9))
     assert np.array_equal(np.asarray(Image.open(io.BytesIO(once)).convert("L")),
                           np.asarray(Image.open(io.BytesIO(flatten_image_bytes(once))).convert("L")))
+
+
+def test_a_dark_page_edge_is_not_offered_as_a_signature():
+    """A photographed card brings its own border: the dark strip down one side of the
+    frame extracts as a region like any other, and then fails the consistency check
+    against the real specimens - which reads to the clerk as their card being rejected.
+    A band of writing is always wider than tall; the narrowest genuine region measured
+    across this project's cards, cheques and photographs is 1.79."""
+    from signature_core.quality import looks_like_signature
+
+    edge = np.zeros((1400, 40), dtype=np.uint8)          # tall, narrow, solid
+    assert not looks_like_signature(edge)
+
+    block = np.zeros((200, 900), dtype=np.uint8)         # wide but solid ink
+    assert not looks_like_signature(block)
+
+    signature = np.asarray(make_signature(seed=2).convert("L"))
+    assert looks_like_signature(signature)
+
+
+def test_every_genuine_specimen_on_a_card_survives_the_plausibility_check():
+    """The filter must never cost a real signature - that would silently shrink the
+    reference set and push a card under the eight-signature floor."""
+    from signature_core.quality import looks_like_signature
+
+    for count in (8, 9, 10):
+        crops = [isolate_signature_ink(crop)
+                 for crop in extract_vertical_anchors(flatten_image_bytes(make_specimen_card(count)))]
+        kept = [c for c in crops if looks_like_signature(np.asarray(c.convert("L")))]
+        assert len(kept) == len(crops) == count
