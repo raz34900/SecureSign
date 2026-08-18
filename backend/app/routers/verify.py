@@ -16,7 +16,8 @@ from backend.app.services import verification
 from backend.app.services.verification import query_preview
 from signature_core.anchors import extract_vertical_anchors
 from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink
-from signature_core.quality import region_is_clipped, validate_image_quality
+from signature_core.quality import (looks_like_signature, region_is_clipped,
+                                    validate_image_quality)
 
 router = APIRouter(tags=["verify"])
 
@@ -79,6 +80,8 @@ def _extract_regions(image_bytes: bytes) -> list[dict]:
     candidates = []
     for crop in extract_vertical_anchors(image_bytes):
         cleaned = isolate_signature_ink(crop)
+        if not looks_like_signature(np.asarray(cleaned.convert("L"))):
+            continue  # page edge, shadow band, registration mark — not offered as a choice
         candidates.append((_ink_fraction(cleaned), cleaned))
 
     if not candidates:

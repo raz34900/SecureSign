@@ -99,7 +99,9 @@ async function uploadCard() {
     const formData = new FormData()
     formData.append('file', cardFile.value)
     const res = await postForm(`/customers/${enrolmentId.value}/card`, formData)
-    crops.value = res.crops.map((c) => ({ ...c, selected: true }))
+    // Numbered from one, matching how the server names a specimen when it rejects
+    // one. An error that says "Signature 3" is useless against unlabelled tiles.
+    crops.value = res.crops.map((c, index) => ({ ...c, position: index + 1, selected: true }))
     step.value = 3
   } catch (err) {
     if (err instanceof ApiError && err.code === 'INSUFFICIENT_SIGNATURES') {
@@ -505,6 +507,7 @@ function bannerClass(level) {
         <button
           v-for="crop in crops"
           :key="crop.crop_id"
+          :data-position="crop.position"
           type="button"
           :aria-pressed="crop.selected"
           class="relative flex flex-col items-center gap-2 rounded-lg border-2 p-2 min-h-11 text-left"
@@ -520,7 +523,10 @@ function bannerClass(level) {
               <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </span>
-          <img :src="'data:image/png;base64,' + crop.preview_png_base64" alt="Signature specimen" class="w-full h-auto rounded" />
+          <span
+            class="absolute top-1.5 left-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border border-border-strong bg-surface px-1 text-2xs font-semibold text-ink"
+          >{{ crop.position }}</span>
+          <img :src="'data:image/png;base64,' + crop.preview_png_base64" :alt="`Signature ${crop.position} found on the card`" class="w-full h-auto rounded" />
           <span class="text-2xs font-medium" :class="crop.selected ? 'text-valid' : 'text-ink-subtle'">
             {{ crop.selected ? 'Selected' : 'Not selected' }}
           </span>
