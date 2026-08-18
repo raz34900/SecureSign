@@ -9,18 +9,23 @@ log = logging.getLogger("securesign")
 
 
 class AppError(Exception):
-    def __init__(self, code: str, message: str, status: int) -> None:
+    def __init__(self, code: str, message: str, status: int,
+                 headers: dict[str, str] | None = None) -> None:
         self.code, self.message, self.status = code, message, status
+        # For the few answers that are incomplete without one — Retry-After on a 429.
+        self.headers = headers
 
 
-def _envelope(status: int, code: str, message: str) -> JSONResponse:
-    return JSONResponse(status_code=status, content={"error": {"code": code, "message": message}})
+def _envelope(status: int, code: str, message: str,
+              headers: dict[str, str] | None = None) -> JSONResponse:
+    return JSONResponse(status_code=status, headers=headers,
+                        content={"error": {"code": code, "message": message}})
 
 
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(AppError)
     async def app_error(_: Request, exc: AppError) -> JSONResponse:
-        return _envelope(exc.status, exc.code, exc.message)
+        return _envelope(exc.status, exc.code, exc.message, exc.headers)
 
     @app.exception_handler(StarletteHTTPException)
     async def http_error(_: Request, exc: StarletteHTTPException) -> JSONResponse:
