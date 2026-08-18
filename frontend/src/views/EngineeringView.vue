@@ -48,9 +48,9 @@ function verdictStat(verdict) {
 }
 
 /* The panel answers only on the internal entrypoint, so a 404 here means the browser
-   reached the public one — a wrong address, not a broken server. Say which. */
-const OUTSIDE_MESSAGE =
-  'This panel is internal only. Open it from the machine running SecureSign, at http://localhost:8081/engineering.'
+   reached the public one. Say nothing about where it does answer: whoever is looking
+   at this screen from the public entrypoint is the one person who must not be told. */
+const OUTSIDE_MESSAGE = 'Not available.'
 
 async function loadOverview() {
   try {

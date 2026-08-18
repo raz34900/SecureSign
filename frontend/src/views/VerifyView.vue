@@ -339,6 +339,7 @@ async function findRegions(chosen) {
     regions.value = found.map((region, order) => ({
       position: order + 1,
       image: region.preview_png_base64,
+      clipped: !!region.clipped,
       file: base64ToFile(region.preview_png_base64, `signature-${order + 1}.png`),
     }))
     if (regions.value.length === 0) chosenRegion.value = 'whole'
@@ -575,6 +576,13 @@ async function reset() {
             class="mx-auto max-h-56 w-auto rounded"
           />
           <p class="mt-2 text-center text-xs text-ink-muted">{{ previewCaption }}</p>
+          <!-- Framing changes the size of the writing inside the fixed square the model
+               reads, and the model is sensitive to size. A stroke running off the picture
+               is the single biggest reason two photographs of one signature disagree. -->
+          <p v-if="activeRegion?.clipped" class="mt-2 text-center text-xs text-amber-700">
+            Part of the signature runs off the edge of the picture. Photograph it again
+            with the whole signature inside the frame, including any trailing stroke.
+          </p>
         </div>
 
         <!-- One region: used on its own, with a way back to the full picture. -->

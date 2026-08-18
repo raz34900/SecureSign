@@ -15,7 +15,7 @@ from backend.app.routers.customers import read_upload
 from backend.app.services import verification
 from signature_core.anchors import extract_vertical_anchors
 from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink
-from signature_core.quality import validate_image_quality
+from signature_core.quality import region_is_clipped, validate_image_quality
 
 router = APIRouter(tags=["verify"])
 
@@ -56,6 +56,7 @@ def _extract_regions(image_bytes: bytes) -> list[dict]:
         regions.append({
             "index": index,
             "preview_png_base64": base64.b64encode(buffer.getvalue()).decode(),
+            "clipped": region_is_clipped(np.asarray(cleaned.convert("L"))),
         })
     return regions
 

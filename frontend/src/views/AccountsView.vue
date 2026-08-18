@@ -66,8 +66,9 @@ async function loadAll() {
     organisations.value = orgs.organisations
     users.value = people.users
   } catch (err) {
+    // A 404 means the public entrypoint. It does not get told where the panel lives.
     loadError.value = err instanceof ApiError && err.status === 404
-      ? 'Account administration is internal only. Open it from the machine running SecureSign, at http://localhost:8081/accounts.'
+      ? 'Not available.'
       : err.message || 'Failed to load accounts.'
   }
 }
