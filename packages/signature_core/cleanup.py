@@ -18,16 +18,34 @@ DEFAULT_MIN_AREA_RATIO = 0.25
 
 PAPER = 255
 
+# Wide enough to span the strokes, so the closing sees paper rather than ink.
+BACKGROUND_KERNEL = 51
+
+
+def flatten_illumination(gray: np.ndarray) -> np.ndarray:
+    """Divide out the lighting, the way a document scanner does.
+
+    A close-up photograph carries the phone's own shadow, and Otsu picks one threshold
+    for the whole image: a shadowed corner either swallows the signature or is read as
+    ink. Estimating the background with a morphological close and dividing by it leaves
+    the strokes and flattens everything else to paper.
+    """
+    background = cv2.morphologyEx(
+        gray, cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (BACKGROUND_KERNEL, BACKGROUND_KERNEL)))
+    return cv2.divide(gray, background, scale=PAPER)
+
 
 def isolate_signature_ink(img: Image.Image,
                           min_area_ratio: float = DEFAULT_MIN_AREA_RATIO) -> Image.Image:
     """Blank out ink blobs far smaller than the dominant one.
 
     Returns a grayscale image with the same dimensions, so the caller can hand it to
-    the normal preprocessing transform. If nothing is confidently removable the input
-    is returned unchanged, which keeps an already-clean crop untouched.
+    the normal preprocessing transform. Illumination is flattened first, so the result
+    is always the evenly-lit image even when there are no blobs to strip.
     """
-    source = np.array(img.convert("L"))
+    source = flatten_illumination(np.array(img.convert("L")))
+    flattened = Image.fromarray(source)
 
     blurred = cv2.GaussianBlur(source, (5, 5), 0)
     _, ink = cv2.threshold(blurred, 0, PAPER, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
@@ -44,14 +62,14 @@ def isolate_signature_ink(img: Image.Image,
 
     count, labels, stats, _ = cv2.connectedComponentsWithStats(joined, connectivity=8)
     if count <= 1:
-        return img
+        return flattened
 
     areas = stats[1:, cv2.CC_STAT_AREA]
     largest = int(areas.max())
     keep = {index + 1 for index, area in enumerate(areas)
             if area >= largest * min_area_ratio}
     if len(keep) == count - 1:
-        return img
+        return flattened
 
     kept_mask = np.isin(labels, list(keep))
     cleaned = np.where(kept_mask, source, PAPER).astype(np.uint8)

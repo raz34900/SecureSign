@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw
 from conftest import login
 from signature_core.anchors import extract_vertical_anchors
 from signature_core.cleanup import isolate_signature_ink
+from signature_core.preprocess import UnifiedSignatureTransform
 from test_signature_core import make_signature, make_specimen_card
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -57,9 +58,13 @@ def test_cleanup_removes_furniture_but_keeps_the_signature():
 
 
 def test_cleanup_leaves_an_already_clean_crop_alone():
-    """A specimen-card crop has nothing to strip, so it comes back untouched."""
+    """Evenly-lit ink has nothing to strip and no shadow to flatten, so what the model
+    sees is unchanged. Asserted on the transform output rather than object identity:
+    cleanup always returns a flattened image, and the property that matters is that
+    flattening a clean crop is a no-op in effect."""
     clean = make_signature(seed=8)
-    assert isolate_signature_ink(clean) is clean
+    assert np.array_equal(np.asarray(UnifiedSignatureTransform()(clean)),
+                          np.asarray(UnifiedSignatureTransform()(isolate_signature_ink(clean))))
 
 
 @pytest.mark.parametrize("module", [
@@ -102,7 +107,32 @@ def test_enrolment_crops_are_extraction_then_cleanup(client, seeded):
 
 
 def test_a_clean_specimen_card_is_unchanged_by_enrolment_cleanup():
-    """The no-op case, stated as a test: adding cleanup must not disturb card scans,
-    which is what makes it safe to apply on both paths."""
+    """The no-op case, stated as a test: cleanup must not disturb card scans, which is
+    what makes it safe to apply on both the enrolment and the verification path."""
+    transform = UnifiedSignatureTransform()
     for crop in extract_vertical_anchors(make_specimen_card(9)):
-        assert isolate_signature_ink(crop) is crop
+        assert np.array_equal(np.asarray(transform(crop)),
+                              np.asarray(transform(isolate_signature_ink(crop))))
+
+
+def test_cleanup_flattens_a_shadowed_capture():
+    """The reason flattening exists. A phone's own shadow over a close-up pushes a
+    genuine signature past the fraud threshold; dividing out the background removes it."""
+    from signature_core.cleanup import flatten_illumination
+
+    clean = make_signature(seed=5)
+    pixels = np.asarray(clean.convert("L")).astype(np.float32)
+    height, width = pixels.shape
+    gradient = np.linspace(1.0, 0.35, width)[None, :] * np.linspace(1.0, 0.75, height)[:, None]
+    shadowed = Image.fromarray(np.clip(pixels * gradient, 0, 255).astype(np.uint8))
+
+    # The shadow is real: the raw capture differs from the clean one.
+    assert not np.array_equal(np.asarray(shadowed), np.asarray(clean.convert("L")))
+
+    # After flattening, the transform sees the same thing it would have seen unshadowed.
+    transform = UnifiedSignatureTransform()
+    recovered = Image.fromarray(flatten_illumination(np.asarray(shadowed)))
+    before = np.asarray(transform(shadowed)).astype(int)
+    after = np.asarray(transform(recovered)).astype(int)
+    target = np.asarray(transform(clean)).astype(int)
+    assert np.abs(after - target).mean() < np.abs(before - target).mean()
