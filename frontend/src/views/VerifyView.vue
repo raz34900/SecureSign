@@ -75,7 +75,9 @@ const submitLabel = computed(() => {
 })
 
 const previewCaption = computed(() => {
-  if (activeRegion.value) return 'This part of the image will be checked.'
+  if (activeRegion.value) {
+    return 'This is exactly what is compared: cut out of your photo and evened for lighting.'
+  }
   if (awaitingChoice.value) return 'Choose the signature below to continue.'
   if (regions.value.length > 0) return 'The whole image will be checked.'
   return 'Ready to check.'
@@ -288,6 +290,15 @@ async function assessFile(chosen) {
   captureNotice.value = verdict
 }
 
+/* Judge what the model will actually compare, not the raw upload.
+   The server evens out lighting before embedding, so warning about a shadow it has
+   already removed tells the clerk to retake a photo that was fine. */
+async function assessPrepared(scan, prepared) {
+  const verdict = await assessCapture(prepared)
+  if (originalFile.value !== scan) return
+  captureNotice.value = verdict.level === 'good' ? null : verdict
+}
+
 function setFile(chosen) {
   originalFile.value = chosen
   if (originalPreviewUrl.value) URL.revokeObjectURL(originalPreviewUrl.value)
@@ -333,6 +344,9 @@ async function findRegions(chosen) {
     if (regions.value.length === 0) chosenRegion.value = 'whole'
     else if (regions.value.length === 1) chosenRegion.value = 1
     else chosenRegion.value = null
+
+    // Now that the prepared image exists, judge that instead of the raw upload.
+    if (regions.value.length === 1) assessPrepared(scan, regions.value[0].file)
   } catch (err) {
     if (originalFile.value !== scan) return
     const unreadable =
