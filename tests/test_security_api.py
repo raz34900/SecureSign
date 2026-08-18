@@ -95,3 +95,34 @@ def test_denied_cross_role_lands_in_audit(client, seeded, session_factory):
     from backend.app.models_db import AuditLog
     with session_factory() as db:
         assert db.query(AuditLog).filter_by(outcome="denied").count() >= 1
+
+
+def test_the_security_headers_survive_the_add_header_trap():
+    """nginx does not merge add_header: a location that declares one discards every
+    header inherited from the server block. Both static locations set Cache-Control, so
+    the page users actually load was sending no HSTS at all — only /api/ ever got it.
+    Every block that sets a header of its own must pull the common set back in."""
+    static = (REPO_ROOT / "frontend" / "nginx-static.inc").read_text()
+    assert static.count("add_header") == static.count("securesign-headers.inc"), \
+        "a location sets a header without re-including the common set"
+
+    headers = (REPO_ROOT / "frontend" / "nginx-headers.inc").read_text()
+    for header in ("Strict-Transport-Security", "X-Content-Type-Options",
+                   "X-Frame-Options", "Referrer-Policy", "Content-Security-Policy"):
+        assert header in headers
+
+    # The photograph preview is a createObjectURL of the picked File, and prepared
+    # regions arrive as base64. A policy without both silently blanks both previews.
+    assert "img-src 'self' data: blob:" in headers
+    assert "script-src 'self';" in headers
+
+
+def test_the_http_listener_will_not_redirect_to_an_attacker_chosen_host():
+    """`return 301 https://$host...` reflects whatever Host arrived, so a cache in front
+    can be poisoned with a Location pointing anywhere. Only names this deployment
+    answers on get a redirect; the default server closes the connection."""
+    public = (REPO_ROOT / "frontend" / "nginx.conf").read_text()
+    listener = public.split("listen 443")[0]
+    assert "listen 80 default_server;" in listener
+    assert "return 444;" in listener
+    assert "server_name localhost" in listener
