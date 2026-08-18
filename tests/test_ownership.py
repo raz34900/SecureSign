@@ -317,15 +317,23 @@ def test_existing_customer_may_be_topped_up_with_a_single_signature(client, seed
 
 
 def test_a_thin_card_is_accepted_when_topping_up_but_not_when_enrolling(client, seeded):
-    """The full specimen card is only demanded for a customer nobody holds yet."""
+    """The full specimen card is only demanded for a customer nobody holds yet.
+
+    Demanded on approval, not on upload: photographs accumulate, so a thin one is a
+    partial contribution rather than a rejection. The floor still holds at the point it
+    decides anything.
+    """
     thin = _card([5, 5])
     login(client, "BA11", "clerk1")
 
     fresh = client.post("/customers", json={
         "national_id": "123456721", "full_name": "Fresh",
         "consent": {"granted": True, "method": "signed_form"}}).json()["enrolment_id"]
-    rejected = client.post(f"/customers/{fresh}/card",
+    uploaded = client.post(f"/customers/{fresh}/card",
                            files={"file": ("card.jpg", thin, "image/jpeg")})
+    assert uploaded.status_code == 200
+    rejected = client.post(f"/customers/{fresh}/references",
+                           json={"crop_ids": [c["crop_id"] for c in uploaded.json()["crops"]]})
     assert rejected.status_code == 422
     assert rejected.json()["error"]["code"] == "INSUFFICIENT_SIGNATURES"
 
