@@ -64,3 +64,32 @@ def test_the_store_cannot_be_grown_without_bound(client, seeded):
     for index in range(throttle.MAX_TRACKED + 50):
         throttle.record_failure("BA11", f"user{index}")
     assert len(throttle._failures) <= throttle.MAX_TRACKED
+
+
+def test_a_flood_of_junk_usernames_cannot_unlock_a_victim(client, seeded):
+    """The store is bounded, so something has to give when it fills. It must not be a
+    locked account: a locked account stops generating attempts, so under an
+    evict-the-oldest policy it ages out fastest and a flood of junk clears any lock.
+    Reproduced against the earlier policy - victim went from 899 seconds to 0."""
+    from backend.app.auth import throttle
+
+    for _ in range(throttle.MAX_ATTEMPTS):
+        wrong(client)
+    locked = throttle.retry_after("BA11", "clerk1")
+    assert locked > 0
+
+    for index in range(throttle.MAX_TRACKED + 100):
+        throttle.record_failure("XX99", f"junk{index}")
+
+    assert throttle.retry_after("BA11", "clerk1") > 0, "the flood unlocked the victim"
+    assert len(throttle._failures) <= throttle.MAX_TRACKED
+
+
+def test_a_saturated_store_refuses_rather_than_forgets(client, seeded):
+    """Full means full. Refusing new accounts while a flood is in progress is a cost;
+    letting the flood through unthrottled is worse."""
+    from backend.app.auth import throttle
+
+    for index in range(throttle.MAX_TRACKED):
+        throttle.record_failure("XX99", f"junk{index}")
+    assert throttle.retry_after("BA11", "someone-new") == throttle.WINDOW_SECONDS

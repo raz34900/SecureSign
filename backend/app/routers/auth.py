@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth import sessions, throttle
 from backend.app.auth.deps import CurrentUser, get_current_user, get_db
-from backend.app.auth.passwords import verify_password
+from backend.app.auth.passwords import hash_password, verify_password
 from backend.app.config import get_settings
 from backend.app.errors import AppError
 from backend.app.models_db import Organisation, User
@@ -16,6 +16,12 @@ from backend.app.repositories import audit
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 _GENERIC = "Invalid credentials."
+
+# Verified against on the miss path so both branches cost the same. Without it the
+# answer arrives in 8 ms for a username that does not exist and 228 ms for one that
+# does, which enumerates every account for free and hands the attacker's whole guess
+# budget to accounts that are real. Measured on this deployment before the fix.
+_ABSENT_ACCOUNT_HASH = hash_password("no account by that name")
 
 # Identifiers, not labels: no spaces, no case ambiguity, nothing that changes when an
 # institution rebrands. The display name lives on the organisation record instead.
@@ -48,7 +54,10 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
     if org is not None and org.is_active:
         user = db.execute(select(User).where(User.org_id == org.id,
                                              User.username == body.username)).scalar_one_or_none()
-    if user is None or not user.is_active or not verify_password(user.password_hash, body.password):
+    known = user is not None and user.is_active
+    correct = verify_password(user.password_hash if known else _ABSENT_ACCOUNT_HASH,
+                              body.password)
+    if not known or not correct:
         throttle.record_failure(body.org_code, body.username)
         raise AppError("AUTH_INVALID", _GENERIC, 401)
     throttle.clear(body.org_code, body.username)
