@@ -33,6 +33,10 @@ MIN_REFS, MAX_REFS = 8, 10
 
 MIN_APPEND_REFS = 1
 
+# A staged enrolment accumulates across photographs, so it needs its own ceiling — more
+# than could ever be selected, but bounded. Nothing here is on disk yet.
+MAX_STAGED_CROPS = 40
+
 MAX_ORG_REFS = 10
 MAX_CUSTOMER_REFS = 30
 
@@ -83,6 +87,13 @@ def stage(db: Session, national_id: str, full_name: str, consent_granted: bool,
 def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict]:
     """Extract, then strip non-signature ink — the same two steps verification runs.
 
+    Photographs accumulate rather than replace. One shot of a card is the happy path,
+    but a card photographed at an angle groups two signatures into one region or misses
+    one at the edge, and re-shooting the whole card to fix a single specimen is a loop
+    with no exit — the clerk was stuck retaking a card that never came out right. Each
+    photograph contributes whatever signatures it does yield, and the count that has to
+    be satisfied is the running total, not any one picture.
+
     A specimen card scanned on white paper comes back untouched, because the cleanup is
     a no-op when there is nothing confidently removable. A close-up photograph of a
     single signature does not: it carries background texture and stray marks, and
@@ -98,19 +109,24 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
              (isolate_signature_ink(crop) for crop in extract_vertical_anchors(even))
              if looks_like_signature(np.asarray(crop.convert("L")))]
 
-    appending = staged.target_customer_id is not None
-    required = MIN_APPEND_REFS if appending else MIN_REFS
-    if len(crops) < required:
-        detail = ("Please photograph at least one clear signature."
-                  if appending else "Please rescan a more complete specimen card.")
+    if not crops:
         raise AppError("INSUFFICIENT_SIGNATURES",
-                       f"Only {len(crops)} signatures detected; at least {required} "
-                       f"are required. {detail}", 422)
-    staged.crops = {}
+                       "No signature was found in this photograph. Fill the frame with "
+                       "the signatures, keep the page flat and the light even, then try "
+                       "again. Anything already collected is kept.", 422)
+
+    room = MAX_STAGED_CROPS - len(staged.crops)
+    if room <= 0:
+        raise AppError("TOO_MANY_SIGNATURES",
+                       f"This enrolment already holds {len(staged.crops)} candidate "
+                       "signatures, which is as many as it keeps. Approve the ones you "
+                       "want or start again.", 422)
+
+    for crop in crops[:room]:
+        staged.crops[str(uuid.uuid4())] = crop
+
     out = []
-    for crop in crops:
-        crop_id = str(uuid.uuid4())
-        staged.crops[crop_id] = crop
+    for crop_id, crop in staged.crops.items():
         buf = io.BytesIO()
         crop.save(buf, format="PNG")
         out.append({"crop_id": crop_id,

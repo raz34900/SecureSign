@@ -90,6 +90,49 @@ function reopenFilePicker() {
 }
 
 const crops = ref([])
+const extraFileInput = ref(null)
+const addingPhoto = ref(false)
+
+/* Photographs accumulate on the server, so a response always carries the whole set.
+   Selection is preserved by crop_id: re-selecting everything after each photo would
+   silently re-tick specimens the clerk had deliberately rejected. */
+function absorbCrops(returned) {
+  const previous = new Map(crops.value.map((c) => [c.crop_id, c.selected]))
+  crops.value = returned.map((c, index) => ({
+    ...c,
+    position: index + 1,
+    selected: previous.has(c.crop_id) ? previous.get(c.crop_id) : true,
+  }))
+}
+
+function openExtraPhotoPicker() {
+  extraFileInput.value?.click()
+}
+
+async function addAnotherPhoto(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file || addingPhoto.value) return
+  addingPhoto.value = true
+  step3Error.value = null
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await postForm(`/customers/${enrolmentId.value}/card`, formData)
+    absorbCrops(res.crops)
+  } catch (err) {
+    if (err instanceof ApiError && err.code === 'CUSTOMER_NOT_FOUND') {
+      expireAndRestart()
+    } else {
+      step3Error.value = {
+        level: 'warning',
+        message: err.message || 'That photograph could not be read. The signatures already collected are kept.',
+      }
+    }
+  } finally {
+    addingPhoto.value = false
+  }
+}
 
 async function uploadCard() {
   if (!cardFile.value || step2Uploading.value) return
@@ -99,13 +142,11 @@ async function uploadCard() {
     const formData = new FormData()
     formData.append('file', cardFile.value)
     const res = await postForm(`/customers/${enrolmentId.value}/card`, formData)
-    // Numbered from one, matching how the server names a specimen when it rejects
-    // one. An error that says "Signature 3" is useless against unlabelled tiles.
-    crops.value = res.crops.map((c, index) => ({ ...c, position: index + 1, selected: true }))
+    absorbCrops(res.crops)
     step.value = 3
   } catch (err) {
     if (err instanceof ApiError && err.code === 'INSUFFICIENT_SIGNATURES') {
-      step2Error.value = { level: 'warning', message: err.message || 'Not enough signatures were detected. Please rescan the card.' }
+      step2Error.value = { level: 'warning', message: err.message || 'No signature was detected. Please rephotograph the card.' }
     } else if (err instanceof ApiError && err.code === 'CUSTOMER_NOT_FOUND') {
       expireAndRestart()
     } else {
@@ -135,6 +176,10 @@ const selectionRule = computed(() =>
     ? 'need at least 1'
     : `need ${minReferences.value} to ${MAX_REFERENCES}`,
 )
+
+/* The way out of the loop the clerk used to be stuck in: short of the minimum is not a
+   dead end that requires re-shooting the whole card, it is a prompt for another photo. */
+const shortfall = computed(() => Math.max(0, minReferences.value - selectedCount.value))
 
 const cardGuidance = computed(() =>
   minReferences.value === 1
@@ -502,6 +547,36 @@ function bannerClass(level) {
       <p class="text-sm font-medium text-ink">
         {{ selectedCount }} of {{ crops.length }} selected ({{ selectionRule }})
       </p>
+
+      <!-- A card photographed at an angle groups two signatures into one region or drops
+           one at the edge. Re-shooting the whole card to fix a single specimen is a loop
+           with no exit; another photograph adds to what is already here. -->
+      <div class="rounded-lg border border-border bg-sunken p-3 space-y-2">
+        <p v-if="shortfall > 0" class="text-sm text-ink">
+          {{ shortfall }} more {{ shortfall === 1 ? 'signature is' : 'signatures are' }} needed.
+          Photograph the missing {{ shortfall === 1 ? 'one' : 'ones' }} — on the card or on
+          their own — and they will be added to these.
+        </p>
+        <p v-else class="text-sm text-ink-muted">
+          Missing or badly cut signatures? Add another photograph instead of starting over.
+        </p>
+        <input
+          ref="extraFileInput"
+          type="file"
+          accept="image/*"
+          capture="environment"
+          class="sr-only"
+          @change="addAnotherPhoto"
+        />
+        <button
+          type="button"
+          :disabled="addingPhoto"
+          class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm font-medium text-navy disabled:text-ink-subtle"
+          @click="openExtraPhotoPicker"
+        >
+          {{ addingPhoto ? 'Reading photograph…' : 'Add another photo' }}
+        </button>
+      </div>
 
       <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
         <button
