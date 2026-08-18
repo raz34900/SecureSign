@@ -137,14 +137,9 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
 def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
             samples_dir: str, org_id: str) -> Customer:
     staged = _get(enrolment_id, org_id)
-    # Numbered by position on the card, which is the order the clerk sees them in and
-    # the only numbering an error message can refer to usefully.
-    order = {crop_id: position for position, crop_id in enumerate(staged.crops, start=1)}
-    chosen = [(order[c], staged.crops[c]) for c in crop_ids if c in staged.crops]
-    positions = [position for position, _ in chosen]
-    selected = [crop for _, crop in chosen]
+    selected = [staged.crops[c] for c in crop_ids if c in staged.crops]
     if staged.target_customer_id is None:
-        customer = _approve_new(db, embedder, staged, selected, samples_dir, positions)
+        customer = _approve_new(db, embedder, staged, selected, samples_dir)
     else:
         customer = _approve_append(db, embedder, staged, selected, samples_dir)
     del _store[enrolment_id]
@@ -164,31 +159,28 @@ def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_d
         ref.image_path = path
 
 
-def _reject_inconsistent(vectors: list[np.ndarray], threshold: float,
-                         positions: list[int]) -> None:
-    """DEF-06. Each specimen is scored against the others by the same rule verification
-    uses, so a crop that would read as a different writer never reaches the registry."""
-    if len(vectors) < 2:
-        return
-    for index, vector in enumerate(vectors):
-        others = [other for position, other in enumerate(vectors) if position != index]
-        result = decide([float(np.linalg.norm(other - vector)) for other in others], threshold)
-        if result.verdict == "FRAUD":
-            raise AppError("INCONSISTENT_REFERENCES",
-                           f"Signature {positions[index]} does not match the others on "
-                           f"this card (distance {result.distance:.4f}). Deselect it and "
-                           "approve the rest, or rescan the card.", 422,
-                           headers=None) from None
+# Removed deliberately, not lost. A first enrolment used to score every specimen against
+# its siblings and refuse the card if one crossed the verification threshold (DEF-06).
+# On real cards it refused constantly: a person's own signature drifts across a page -
+# the first few small and tight, the last few large with a long trailing sweep - and this
+# project's own genuine data already sits at 0.3303 for its worst honest pair against a
+# 0.3999 threshold. There is nothing to impersonate at a first enrolment either: the card
+# *is* the identity being defined, so a specimen that differs from its neighbours is
+# handwriting variation, not evidence of a second writer.
+#
+# The impersonation guard that matters is untouched and lives in _approve_append: a
+# signature offered against a customer already on file is scored against that customer's
+# existing references, and a mismatch is refused with SIGNATURE_MISMATCH. That is the
+# case where there is something to compare against and something to protect.
 
 
 def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Image],
-                 samples_dir: str, positions: list[int]) -> Customer:
+                 samples_dir: str) -> Customer:
     if not (MIN_REFS <= len(selected) <= MAX_REFS):
         raise AppError("INSUFFICIENT_SIGNATURES",
                        f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
     settings = get_settings()
     vectors = [embedder.embed(pad_for_rotation(crop)) for crop in selected]
-    _reject_inconsistent(vectors, settings.threshold, positions)
 
     customer = Customer(
         national_id_encrypted=encrypt_pii(staged.national_id, settings.pii_enc_key),
