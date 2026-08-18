@@ -14,7 +14,7 @@ from backend.app.errors import AppError
 from backend.app.routers.customers import read_upload
 from backend.app.services import verification
 from signature_core.anchors import extract_vertical_anchors
-from signature_core.cleanup import isolate_signature_ink
+from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink
 from signature_core.quality import validate_image_quality
 
 router = APIRouter(tags=["verify"])
@@ -33,6 +33,8 @@ def _ink_fraction(image: Image.Image) -> float:
 
 
 def _extract_regions(image_bytes: bytes) -> list[dict]:
+    # Flatten first: extraction thresholds globally and cannot see past a shadow.
+    image_bytes = flatten_image_bytes(image_bytes)
     candidates = []
     for crop in extract_vertical_anchors(image_bytes):
         cleaned = isolate_signature_ink(crop)

@@ -18,7 +18,7 @@ from PIL import Image, ImageDraw
 
 from conftest import login
 from signature_core.anchors import extract_vertical_anchors
-from signature_core.cleanup import isolate_signature_ink
+from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink
 from signature_core.preprocess import UnifiedSignatureTransform
 from test_signature_core import make_signature, make_specimen_card
 
@@ -97,7 +97,8 @@ def test_enrolment_crops_are_extraction_then_cleanup(client, seeded):
     assert response.status_code == 200
     returned = response.json()["crops"]
 
-    expected = [isolate_signature_ink(crop) for crop in extract_vertical_anchors(card)]
+    expected = [isolate_signature_ink(crop)
+                for crop in extract_vertical_anchors(flatten_image_bytes(card))]
     assert len(returned) == len(expected)
 
     for crop, reference in zip(returned, expected):
@@ -136,3 +137,54 @@ def test_cleanup_flattens_a_shadowed_capture():
     after = np.asarray(transform(recovered)).astype(int)
     target = np.asarray(transform(clean)).astype(int)
     assert np.abs(after - target).mean() < np.abs(before - target).mean()
+
+
+def shadowed_card(count: int = 9) -> bytes:
+    """A specimen card photographed with the phone's own shadow across it."""
+    card = Image.open(io.BytesIO(make_specimen_card(count))).convert("L")
+    pixels = np.asarray(card).astype(np.float32)
+    height, width = pixels.shape
+    gradient = np.linspace(1.0, 0.3, width)[None, :] * np.linspace(1.0, 0.7, height)[:, None]
+    darkened = Image.fromarray(np.clip(pixels * gradient, 0, 255).astype(np.uint8))
+    buffer = io.BytesIO()
+    darkened.convert("RGB").save(buffer, format="JPEG", quality=92)
+    return buffer.getvalue()
+
+
+def test_flattening_happens_before_extraction_not_after():
+    """The ordering is the whole point, and it is invisible on a clean card.
+
+    Extraction thresholds the entire frame with one Otsu cut, so a shadow hides the
+    strokes it falls on and the card is read in pieces. Flattening the crops afterwards
+    cannot help: by then extraction has already decided what to cut out. This failed in
+    production at roughly one capture in ten before the order was fixed.
+    """
+    clean, shadowed = make_specimen_card(9), shadowed_card(9)
+
+    # Precondition: the shadow really does defeat raw extraction.
+    assert len(extract_vertical_anchors(shadowed)) < len(extract_vertical_anchors(clean))
+
+    # Flattening first recovers every signature.
+    assert (len(extract_vertical_anchors(flatten_image_bytes(shadowed)))
+            == len(extract_vertical_anchors(clean)))
+
+
+def test_enrolment_finds_every_signature_on_a_shadowed_card(client, seeded):
+    """End to end: a shadowed card must enrol, not fail the eight-signature floor."""
+    login(client, "BA11", "clerk1")
+    enrolment_id = client.post("/customers", json={
+        "national_id": "445566779", "full_name": "Shadowed Capture",
+        "consent": {"granted": True, "method": "signed_form"},
+    }).json()["enrolment_id"]
+
+    response = client.post(f"/customers/{enrolment_id}/card",
+                           files={"file": ("card.jpg", shadowed_card(9), "image/jpeg")})
+    assert response.status_code == 200, response.text
+    assert len(response.json()["crops"]) == 9
+
+
+def test_flattening_is_idempotent():
+    """It runs before extraction and again inside cleanup, so it must be safe twice."""
+    once = flatten_image_bytes(shadowed_card(9))
+    assert np.array_equal(np.asarray(Image.open(io.BytesIO(once)).convert("L")),
+                          np.asarray(Image.open(io.BytesIO(flatten_image_bytes(once))).convert("L")))
