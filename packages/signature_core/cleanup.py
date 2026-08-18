@@ -52,6 +52,31 @@ def flatten_image_bytes(image_bytes: bytes) -> bytes:
     return encoded.tobytes() if ok else image_bytes
 
 
+# How far above or below the main stroke a detached mark may sit and still be part of
+# the signature, as a fraction of the main stroke's own height.
+ACCENT_REACH = 0.25
+
+
+def _belongs_to(blob, main) -> bool:
+    """Is this detached mark part of the signature rather than document furniture?
+
+    A dot over an i, a diacritic, a crossed t: these are separate ink blobs far smaller
+    than a quarter of the signature, and the size rule alone deletes them. What tells
+    them apart from a cheque's reference number or its corner squares is position - an
+    accent sits within the horizontal run of the writing and hugs it vertically, while
+    furniture sits off to the side or out at the margins.
+    """
+    left, top, width, height = (blob[cv2.CC_STAT_LEFT], blob[cv2.CC_STAT_TOP],
+                                blob[cv2.CC_STAT_WIDTH], blob[cv2.CC_STAT_HEIGHT])
+    main_left, main_top, main_width, main_height = (
+        main[cv2.CC_STAT_LEFT], main[cv2.CC_STAT_TOP],
+        main[cv2.CC_STAT_WIDTH], main[cv2.CC_STAT_HEIGHT])
+    if left < main_left or left + width > main_left + main_width:
+        return False
+    reach = ACCENT_REACH * main_height
+    return (top + height >= main_top - reach) and (top <= main_top + main_height + reach)
+
+
 def isolate_signature_ink(img: Image.Image,
                           min_area_ratio: float = DEFAULT_MIN_AREA_RATIO) -> Image.Image:
     """Blank out ink blobs far smaller than the dominant one.
@@ -82,8 +107,9 @@ def isolate_signature_ink(img: Image.Image,
 
     areas = stats[1:, cv2.CC_STAT_AREA]
     largest = int(areas.max())
+    main = stats[1 + int(areas.argmax())]
     keep = {index + 1 for index, area in enumerate(areas)
-            if area >= largest * min_area_ratio}
+            if area >= largest * min_area_ratio or _belongs_to(stats[index + 1], main)}
     if len(keep) == count - 1:
         return flattened
 

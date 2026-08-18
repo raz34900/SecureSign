@@ -57,6 +57,24 @@ def test_cleanup_removes_furniture_but_keeps_the_signature():
     assert (signature_band < 128).sum() > 0.5 * ink_pixels(cleaned)
 
 
+def test_cleanup_keeps_an_accent_but_still_drops_furniture():
+    """A dot over an i is a detached blob far under a quarter of the signature, which is
+    exactly the size the furniture rule deletes. Position is what separates them: an
+    accent sits within the horizontal run of the writing, furniture sits out at the
+    margins. Measured on a real photograph, the size rule alone removed 2.9% of the ink.
+    """
+    region = make_region_with_furniture()
+    draw = ImageDraw.Draw(region)
+    # Just clear of the writing, the way a macron or a dot over an i sits. The signature
+    # occupies rows 80-199 of this fixture.
+    draw.line([(600, 68), (700, 66)], fill=0, width=6)
+    accent_band = (slice(60, 78), slice(590, 710))
+
+    cleaned = np.asarray(isolate_signature_ink(region))
+    assert (cleaned[accent_band] < 128).sum() > 0, "the accent was deleted with the furniture"
+    assert (cleaned[:, :300] < 128).sum() == 0, "the reference number survived"
+
+
 def test_cleanup_leaves_an_already_clean_crop_alone():
     """Evenly-lit ink has nothing to strip and no shadow to flatten, so what the model
     sees is unchanged. Asserted on the transform output rather than object identity:
