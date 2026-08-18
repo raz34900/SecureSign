@@ -23,7 +23,7 @@ from backend.app.models_db import ConsentRecord, Customer
 from backend.app.repositories import audit, customers as customers_repo, references as references_repo
 from backend.app.security.crypto import blind_index, encrypt_pii
 from signature_core.anchors import extract_vertical_anchors
-from signature_core.cleanup import isolate_signature_ink
+from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink
 from signature_core.decision import decide
 
 _TTL_SECONDS = 15 * 60
@@ -88,7 +88,9 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
     leaving them in stores a reference the model reads as a different writer.
     """
     staged = _get(enrolment_id, org_id)
-    crops = [isolate_signature_ink(crop) for crop in extract_vertical_anchors(image_bytes)]
+    # Flatten first: extraction thresholds globally and cannot see past a shadow.
+    even = flatten_image_bytes(image_bytes)
+    crops = [isolate_signature_ink(crop) for crop in extract_vertical_anchors(even)]
 
     appending = staged.target_customer_id is not None
     required = MIN_APPEND_REFS if appending else MIN_REFS

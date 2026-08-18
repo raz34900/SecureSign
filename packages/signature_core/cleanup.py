@@ -36,6 +36,22 @@ def flatten_illumination(gray: np.ndarray) -> np.ndarray:
     return cv2.divide(gray, background, scale=PAPER)
 
 
+def flatten_image_bytes(image_bytes: bytes) -> bytes:
+    """Even out lighting before extraction, and return encoded bytes.
+
+    Extraction thresholds the whole frame with one Otsu cut, so a shadow across a
+    close-up hides the strokes it falls on and the signature is found in pieces or not
+    at all. Flattening afterwards is too late — by then extraction has already decided
+    what to cut out. Re-encoded as PNG so nothing is lost to compression, and the
+    extractor's own decode stays exactly as it was.
+    """
+    gray = cv2.imdecode(np.frombuffer(image_bytes, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
+    if gray is None:
+        return image_bytes
+    ok, encoded = cv2.imencode(".png", flatten_illumination(gray))
+    return encoded.tobytes() if ok else image_bytes
+
+
 def isolate_signature_ink(img: Image.Image,
                           min_area_ratio: float = DEFAULT_MIN_AREA_RATIO) -> Image.Image:
     """Blank out ink blobs far smaller than the dominant one.
