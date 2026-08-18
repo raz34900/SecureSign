@@ -41,8 +41,15 @@ def _reference_views(refs: list[ReferenceSignature], distances: list[float],
     views = []
     for ref, distance in zip(refs, distances):
         try:
-            with open(ref.image_path, "rb") as f:
-                image = base64.b64encode(f.read()).decode()
+            # Through the same transform as the query, not the stored crop. Enrolment
+            # keeps a flattened photograph, which carries the paper's grain; the query
+            # is shown normalised. Side by side that reads as the reference having
+            # skipped preparation, and it has not — Otsu removes the grain and the model
+            # never sees it. Showing the two at different stages of the same pipeline
+            # invites exactly the wrong conclusion, so show both at the stage that
+            # decided the number underneath them.
+            with Image.open(ref.image_path) as stored:
+                image = query_preview(stored.convert("L"))
         except OSError:
             continue  # missing file: skip, never 500 the whole verification
         views.append({"reference_id": ref.id,
