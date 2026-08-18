@@ -19,10 +19,12 @@ services:
     build:
       context: ..
       dockerfile: deploy/Dockerfile
+    # Deliberately not published. nginx reaches it over the compose network, and the
+    # engineering and account endpoints are hidden by an nginx rule — so a published
+    # port is a second door into the API with nothing in front of it. Publish it
+    # temporarily if you need to talk to the API directly, and remember what it opens.
     expose:
       - "8000"
-    ports:
-      - "127.0.0.1:8000:8000"   # direct API access for dev/tests; remove for prod
     env_file:
       - ../.env
     volumes:

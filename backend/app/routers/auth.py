@@ -44,7 +44,10 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
     if user is None or not user.is_active or not verify_password(user.password_hash, body.password):
         raise AppError("AUTH_INVALID", _GENERIC, 401)
     token = sessions.create_session(db, user.id, get_settings().session_ttl_hours)
-    response.set_cookie("session", token, httponly=True, samesite="lax")
+    # Secure: every entrypoint is TLS and port 80 only redirects, so there is no request
+    # this cookie legitimately rides in the clear. Without it a single forced plaintext
+    # request to any port on this host hands over a live session.
+    response.set_cookie("session", token, httponly=True, samesite="lax", secure=True)
     return {"role": user.role, "org_type": org.type,
             "must_change_password": user.must_change_password}
 

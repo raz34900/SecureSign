@@ -46,14 +46,16 @@ def app(session_factory, monkeypatch, tmp_path):
 
 @pytest.fixture
 def client(app):
-    return TestClient(app)
+    # https, not http: the session cookie is set Secure, and a client on a plain-http
+    # base URL silently drops it — every auth test would fail for the wrong reason.
+    return TestClient(app, base_url="https://testserver")
 
 
 @pytest.fixture
 def other_client(app):
     """A second, independent session against the same app — for tests where one account
     acts on another that is signed in at the same time."""
-    return TestClient(app)
+    return TestClient(app, base_url="https://testserver")
 
 
 @pytest.fixture
