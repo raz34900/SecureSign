@@ -8,7 +8,7 @@ defineProps({
 </script>
 
 <template>
-  <div class="rounded-lg border px-4 py-3 text-sm space-y-1" :class="noticeClass(level)">
+  <div class="ss-rise rounded-lg border px-4 py-3 text-sm space-y-1" :class="noticeClass(level)">
     <p v-if="title" class="font-medium">{{ title }}</p>
     <slot />
   </div>
