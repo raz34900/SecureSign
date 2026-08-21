@@ -22,6 +22,13 @@ def seed_two_orgs(client):
     verify(client, "123456785", png(make_signature(seed=9)))
 
 
+def seed_as_the_bank(client, national_id: str = "123456785"):
+    """Bank A enrols and verifies, and stays signed in. Reporting is the bank's to do."""
+    login(client, "BA11", "clerk1")
+    do_full_enrolment(client, national_id)
+    verify(client, national_id, png(make_signature()))
+
+
 def test_history_scoped_to_own_org(client, seeded):
     seed_two_orgs(client)
     r = client.get("/verifications")
@@ -64,7 +71,7 @@ def test_history_rejects_a_malformed_national_id_filter(client, seeded):
 
 
 def test_reporting_a_wrong_result_queues_it_for_engineering(client, seeded, session_factory):
-    seed_two_orgs(client)
+    seed_as_the_bank(client)
     request_id = client.get("/verifications").json()["verifications"][0]["request_id"]
 
     r = client.post(f"/verifications/{request_id}/feedback",
@@ -84,7 +91,7 @@ def test_reporting_a_wrong_result_queues_it_for_engineering(client, seeded, sess
 
 def test_reporting_never_changes_the_stored_verdict(client, seeded, session_factory):
     """An institution cannot rewrite its own history, only flag it."""
-    seed_two_orgs(client)
+    seed_as_the_bank(client)
     row = client.get("/verifications").json()["verifications"][0]
     client.post(f"/verifications/{row['request_id']}/feedback", json={"claimed_label": "forged"})
 
@@ -94,7 +101,7 @@ def test_reporting_never_changes_the_stored_verdict(client, seeded, session_fact
 
 
 def test_a_result_can_only_be_reported_once(client, seeded):
-    seed_two_orgs(client)
+    seed_as_the_bank(client)
     request_id = client.get("/verifications").json()["verifications"][0]["request_id"]
     body = {"claimed_label": "forged"}
     assert client.post(f"/verifications/{request_id}/feedback", json=body).status_code == 200
@@ -104,19 +111,20 @@ def test_a_result_can_only_be_reported_once(client, seeded):
 
 
 def test_cannot_report_another_orgs_verification(client, seeded):
+    """Bank B may report, being an institution, but not Bank A's verification."""
     login(client, "BA11", "clerk1")
     do_full_enrolment(client, "123456786")
     verify(client, "123456786", png(make_signature()))
     request_id = client.get("/verifications").json()["verifications"][0]["request_id"]
     client.cookies.clear()
 
-    login(client, "SB44", "rep1")
+    login(client, "BB22", "clerk2")
     r = client.post(f"/verifications/{request_id}/feedback", json={"claimed_label": "forged"})
     assert r.status_code == 404
 
 
 def test_reporting_rejects_an_unknown_label(client, seeded):
-    seed_two_orgs(client)
+    seed_as_the_bank(client)
     request_id = client.get("/verifications").json()["verifications"][0]["request_id"]
     r = client.post(f"/verifications/{request_id}/feedback", json={"claimed_label": "maybe"})
     assert r.status_code == 422
@@ -124,3 +132,94 @@ def test_reporting_rejects_an_unknown_label(client, seeded):
 
 def test_history_requires_auth(client, seeded):
     assert client.get("/verifications").status_code == 401
+
+
+def test_a_subscriber_cannot_report_a_result(client, seeded):
+    """The incentive is the reason, not a general mistrust of shops.
+
+    A merchant is paid whether or not the signature was genuine, and a FRAUD verdict is
+    the thing standing between them and the sale - so the cheapest correction they can
+    file is always "that fraud was fine". These reports are the engineering team's ground
+    truth for judging the model, which makes the one party with a standing reason to
+    misreport the one party that must not be able to.
+    """
+    seed_two_orgs(client)  # leaves the shop signed in, looking at its own verification
+    row = client.get("/verifications").json()["verifications"][0]
+
+    refused = client.post(f"/verifications/{row['request_id']}/feedback",
+                          json={"claimed_label": "genuine"})
+    assert refused.status_code == 403
+    assert refused.json()["error"]["code"] == "FORBIDDEN"
+
+    from backend.app.models_db import ModelFeedback
+    assert row["feedback"] is None
+
+
+def test_a_subscriber_can_still_read_its_own_history(client, seeded):
+    """Reading is not the problem; filing a claim about the model is. A shop must still
+    be able to look back at what it checked."""
+    seed_two_orgs(client)
+    rows = client.get("/verifications").json()["verifications"]
+    assert len(rows) == 1
+    assert client.get(f"/verifications/{rows[0]['request_id']}").status_code == 200
+
+
+def test_an_org_admin_at_a_shop_cannot_report_either(client, seeded):
+    """The senior account at a subscriber is still a subscriber. Gating on the clerk role
+    gets this right by construction: IMPLIED_ROLES grants clerk at a financial
+    organisation and never at a subscriber."""
+    from test_org_admin import make_admin, owner_password
+
+    seed_two_orgs(client)
+    row = client.get("/verifications").json()["verifications"][0]
+    client.cookies.clear()
+
+    make_admin(client, "SB44", "boss2")
+    client.cookies.clear()
+    login(client, "SB44", "boss2", password=owner_password("boss2"))
+    assert client.post(f"/verifications/{row['request_id']}/feedback",
+                       json={"claimed_label": "genuine"}).status_code in (403, 404)
+
+
+def test_only_the_enrolling_role_may_report(client, seeded):
+    """Narrower than "any institution": the clerk role, plus an org_admin at a financial
+    organisation, which is what IMPLIED_ROLES expands. A plain verifier cannot report
+    even at a bank - they hold no reference set and did not enrol anyone, so a claim
+    about the model is not theirs to file. If that proves too tight in practice the fix
+    is to widen this gate deliberately, not to discover it by accident.
+    """
+    from test_engineering import enter_panel
+
+    enter_panel(client)
+    created = client.post("/admin/users", json={
+        "org_code": "BA11", "username": "bankver", "role": "verifier"}).json()
+    client.cookies.clear()
+
+    login(client, "BA11", "clerk1")
+    do_full_enrolment(client, "123456787")
+    verify(client, "123456787", png(make_signature()))
+    row = client.get("/verifications").json()["verifications"][0]
+    client.cookies.clear()
+
+    login(client, "BA11", "bankver", password=created["initial_password"])
+    client.post("/auth/password", json={"current_password": created["initial_password"],
+                                        "new_password": "Bank-Verifier-1!"})
+    assert client.post(f"/verifications/{row['request_id']}/feedback",
+                       json={"claimed_label": "genuine"}).status_code == 403
+
+
+def test_a_financial_org_admin_may_report(client, seeded):
+    """The senior account at a bank is a clerk by implication, so it can."""
+    from test_org_admin import make_admin, owner_password
+
+    login(client, "BA11", "clerk1")
+    do_full_enrolment(client, "123456788")
+    verify(client, "123456788", png(make_signature()))
+    row = client.get("/verifications").json()["verifications"][0]
+    client.cookies.clear()
+
+    make_admin(client, "BA11", "boss1")
+    client.cookies.clear()
+    login(client, "BA11", "boss1", password=owner_password("boss1"))
+    assert client.post(f"/verifications/{row['request_id']}/feedback",
+                       json={"claimed_label": "genuine"}).status_code == 200

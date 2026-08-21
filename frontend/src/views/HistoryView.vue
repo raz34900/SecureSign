@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { get, postJson, ApiError } from '../api.js'
+import { isClerk } from '../auth.js'
 import { formatDistance, formatConfidence, formatDateTime, classifyDecision, decisionLabel } from '../format.js'
 
 const FALLBACK_THRESHOLD = 0.3999
@@ -323,9 +324,20 @@ onMounted(loadHistory)
                     </p>
                   </div>
 
+                  <!-- Reporting belongs to the enrolling side. A merchant is paid either
+                       way and a FRAUD verdict is what stands between them and the sale, so
+                       the cheapest correction they could file is always "that fraud was
+                       fine" - and these reports are the engineering team's ground truth.
+                       The server refuses regardless; this keeps the form out of reach of
+                       someone who would only be told no. -->
+                  <div v-if="!isClerk" class="border-t border-border pt-3 text-sm text-ink-muted">
+                    Results are reported by the institution that holds this customer's
+                    reference signatures.
+                  </div>
+
                   <!-- A result can only be reported once, so the form disappears
                        afterwards while the row itself stays open for reading. -->
-                  <div v-if="v.feedback" class="border-t border-border pt-3 text-sm text-ink-muted">
+                  <div v-else-if="v.feedback" class="border-t border-border pt-3 text-sm text-ink-muted">
                     Reported as {{ v.feedback.claimed_label }} - {{ v.feedback.status }}.
                     A result cannot be reported twice.
                   </div>
