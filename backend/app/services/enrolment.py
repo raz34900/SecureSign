@@ -104,17 +104,10 @@ def stage(db: Session, national_id: str, full_name: str, consent_granted: bool,
 def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict]:
     """Extract, then strip non-signature ink - the same two steps verification runs.
 
-    Photographs accumulate rather than replace. One shot of a card is the happy path,
-    but a card photographed at an angle groups two signatures into one region or misses
-    one at the edge, and re-shooting the whole card to fix a single specimen is a loop
-    with no exit - the clerk was stuck retaking a card that never came out right. Each
-    photograph contributes whatever signatures it does yield, and the count that has to
-    be satisfied is the running total, not any one picture.
-
-    A specimen card scanned on white paper comes back untouched, because the cleanup is
-    a no-op when there is nothing confidently removable. A close-up photograph of a
-    single signature does not: it carries background texture and stray marks, and
-    leaving them in stores a reference the model reads as a different writer.
+    Photographs accumulate rather than replace. A card shot at an angle groups two
+    signatures into one region or loses one at the edge, and re-shooting the whole card
+    to fix a single specimen never converges. Each photograph contributes what it yields,
+    and the floor applies to the running total.
     """
     staged = _get(enrolment_id, org_id)
     crops = candidate_crops(image_bytes)
@@ -132,14 +125,9 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
                        "signatures, which is as many as it keeps. Approve the ones you "
                        "want or start again.", 422)
 
-    # The same photograph attached twice yields byte-identical crops, because everything
-    # between the upload and here is deterministic. Storing them would put one signature
-    # on file several times, and the verification evidence view would then show one
-    # signature agreeing with itself as though several references had agreed.
-    # Compared against what earlier photographs left, not against the rest of this one.
-    # Two signatures on one card are never byte-identical - if they came out that way
-    # the extraction handed back the same region twice, and that is a bug to find rather
-    # than a specimen to drop mid-card.
+    # The same photograph twice yields byte-identical crops, and storing them shows one
+    # signature agreeing with itself as though several references had. Against earlier
+    # photographs only: two signatures on one real card are never identical.
     collected = set(staged.digests)
     fresh = []
     for crop in crops:
@@ -193,13 +181,10 @@ def _store_crops(db: Session, embedder, customer_id: str, org_id: str,
                  crops: list[Image.Image], vectors: list[np.ndarray] | None = None) -> None:
     """The crop goes into the row, encrypted, rather than into a file beside it.
 
-    Stored at the resolution it was cut at, not at the 224x224 the model reads. The
-    embedding is derived and can be rebuilt; the crop is the archive it would be rebuilt
-    from, and downscaling it now would bake today's transform into it permanently.
-
+    Stored at the resolution it was cut at, not the 224x224 the model reads: the crop is
+    what re-embedding rebuilds from, and downscaling now would bake in today's transform.
     The reference id is the additional authenticated data, so a ciphertext lifted onto
-    another row fails to decrypt instead of quietly standing in for someone else's
-    signature.
+    another row fails to decrypt rather than standing in for that signature.
     """
     dek = customer_keys.key_for(db, customer_id)
     for index, crop in enumerate(crops):
@@ -211,19 +196,10 @@ def _store_crops(db: Session, embedder, customer_id: str, org_id: str,
                                                      aad=ref.id.encode())
 
 
-# Removed deliberately, not lost. A first enrolment used to score every specimen against
-# its siblings and refuse the card if one crossed the verification threshold (DEF-06).
-# On real cards it refused constantly: a person's own signature drifts across a page -
-# the first few small and tight, the last few large with a long trailing sweep - and this
-# project's own genuine data already sits at 0.3303 for its worst honest pair against a
-# 0.3999 threshold. There is nothing to impersonate at a first enrolment either: the card
-# *is* the identity being defined, so a specimen that differs from its neighbours is
-# handwriting variation, not evidence of a second writer.
-#
-# The impersonation guard that matters is untouched and lives in _approve_append: a
-# signature offered against a customer already on file is scored against that customer's
-# existing references, and a mismatch is refused with SIGNATURE_MISMATCH. That is the
-# case where there is something to compare against and something to protect.
+# Removed deliberately, not lost. Scoring specimens against their siblings (DEF-06)
+# refused real cards constantly - this project's worst genuine pair is 0.3303 against a
+# 0.3999 threshold - and a first card is the identity being defined, so there is nothing
+# to impersonate. The guard that matters is in _approve_append, where there is.
 
 
 def _approve_new(db: Session, embedder, staged: _Staged,

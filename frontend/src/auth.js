@@ -27,9 +27,8 @@ export async function login(orgCode, username, password) {
 }
 
 /**
- * Signing out must always succeed locally, even when the request does not. If the
- * server call is the only thing that clears state, a failed call strands the user on
- * a page they cannot leave and cannot sign out of.
+ * Signing out must succeed locally even when the request does not, or a failed call
+ * strands the user on a page they can neither leave nor sign out of.
  */
 export async function logout() {
   try {
@@ -45,11 +44,9 @@ export const isOrgAdmin = computed(() => state.user?.role === 'org_admin')
 export const mustChangePassword = computed(() => !!state.user?.must_change_password)
 
 /**
- * An org_admin holds the senior account for its kind of organisation, so it can do
- * whatever that organisation does. This mirrors IMPLIED_ROLES on the server, and the
- * router must check against this rather than the bare role - a route that admits
- * "clerk" admits an org_admin at a bank, and checking the literal role instead sends
- * them into a redirect loop.
+ * An org_admin can do whatever its kind of organisation does. Mirrors IMPLIED_ROLES on
+ * the server; the router must check this rather than the bare role, or an org_admin at a
+ * bank is refused from /enrol and redirected into a loop.
  */
 const IMPLIED_ROLES = {
   financial: ['clerk', 'verifier'],

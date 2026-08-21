@@ -1,28 +1,19 @@
 """Failed-login throttling, keyed on the account being attempted.
 
-Keyed on the account rather than the caller because the API cannot see the caller.
-Behind Docker every request arrives from the nginx container, so a per-address limit
-here would count the whole internet as one client. Per-address limiting belongs in
-nginx, which is the only component that sees the real source; this is the half that
-protects one account from being ground down from anywhere.
-
-The key is whatever was submitted, resolved or not. Throttling only real accounts would
-answer 429 for names that exist and 401 for names that do not, which is an existence
-oracle - the same reason a customer belonging to another organisation returns 404.
+Keyed on the account because the API cannot see the caller: behind Docker every request
+arrives from nginx, so a per-address limit here would count the internet as one client.
+Per-address limiting belongs in nginx. The key is whatever was submitted, resolved or
+not - throttling only real accounts would answer 429 for names that exist and 401 for
+names that do not, which is an existence oracle.
 """
 import time
 
 MAX_ATTEMPTS = 5
 WINDOW_SECONDS = 15 * 60
 
-# An unauthenticated endpoint must not let a caller grow this without bound. Each key
-# holds at most MAX_ATTEMPTS timestamps, so this caps the store at a few thousand.
-#
-# Full means full: a saturated store refuses new accounts rather than making room. An
-# earlier version evicted the entry whose newest timestamp was oldest, which is exactly
-# a locked-out victim - a locked account stops generating stamps, so it ages fastest.
-# Flooding junk usernames cleared any lock. Never let an unauthenticated caller choose
-# who gets forgotten.
+# Bounded, because an unauthenticated endpoint must not let a caller grow it. Full means
+# full: evicting the oldest entry meant flooding junk usernames cleared a victim's
+# lockout, since a locked account stops generating stamps and ages fastest.
 MAX_TRACKED = 4096
 
 _failures: dict[tuple[str, str], list[float]] = {}

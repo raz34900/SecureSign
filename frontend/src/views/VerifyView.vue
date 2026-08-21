@@ -325,10 +325,9 @@ async function findRegions(chosen) {
     const found = Array.isArray(data?.regions) ? data.regions : []
     regions.value = found.map((region, order) => ({
       position: order + 1,
-      // Two different images on purpose. `image` is a thumbnail to look at; a phone
-      // cannot hold several full-resolution bitmaps decoded at once and reclaims memory
-      // by discarding the page. `file` is the full-resolution region, which is what
-      // gets submitted, because downscaling before preparation moves the distance.
+      // Two images on purpose: `image` is a thumbnail to look at, because a phone
+      // discards the page rather than hold several full bitmaps; `file` is the
+      // full-resolution region that gets submitted, since downscaling moves the distance.
       image: region.preview_png_base64,
       clipped: !!region.clipped,
       file: base64ToFile(region.image_png_base64, `signature-${order + 1}.png`),

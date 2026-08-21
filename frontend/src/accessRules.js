@@ -1,10 +1,7 @@
 /**
- * Which roles each protected route admits.
- *
- * Kept as plain data, apart from the route table, so it can be checked without a
- * browser - see routing.check.mjs. The rule these have to satisfy is that roleHome()
- * always returns a path the user is admitted to; when it does not, the guard redirects
- * a user to a page that rejects them, which redirects them again, and the tab locks up.
+ * Which roles each protected route admits. Plain data, apart from the route table, so
+ * routing.check.mjs can check it without a browser. The invariant: roleHome() must return
+ * a path the user is admitted to, or the guard redirects into a loop and the tab locks up.
  */
 export const ROUTE_ROLES = {
   '/verify': ['verifier', 'clerk'],

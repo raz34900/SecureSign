@@ -11,13 +11,10 @@ export class ApiError extends Error {
 }
 
 /**
- * Called whenever the server rejects us as unauthenticated. Registered by auth.js,
- * which cannot be imported here without a cycle.
- *
- * Without this, a session that dies server-side (expiry, revocation, a rebuilt
- * database) leaves the app believing it is still signed in. Every request then fails
- * while the router keeps bouncing /login back to the role's home page, and the only
- * way out is clearing site data by hand.
+ * Called when the server rejects us as unauthenticated. Registered by auth.js, which
+ * cannot be imported here without a cycle. Without it a server-side session death leaves
+ * the app believing it is signed in, and the router bounces /login to the role's home
+ * page forever.
  */
 let onUnauthorized = null
 

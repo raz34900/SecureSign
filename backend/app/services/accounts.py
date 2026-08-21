@@ -1,12 +1,9 @@
 """Provisioning organisations and their users.
 
-Until now the only way to create an account was re-running the seed script, which
-meant a running registry could not take on a new institution without a deploy.
-
-Two rules are load-bearing here. A role only makes sense inside certain kinds of
-organisation - an engineer outside the operator would be a route into the engineering
-panel for an institution. And nothing is ever deleted: customers, verifications and
-audit rows all point back at these records, so accounts are deactivated instead.
+Two rules are load-bearing. A role only makes sense inside certain kinds of organisation
+- an engineer outside the operator would be an institution's route into the engineering
+panel. And nothing is deleted while customers, verifications or audit rows still point at
+it; accounts are deactivated instead.
 """
 from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
@@ -32,14 +29,9 @@ ROLE_ORG_TYPES = {
 
 MIN_PASSWORD_LENGTH = 12
 
-# Composition rules for a password its owner chooses. Applied here and nowhere else: a
-# generated handover password is not chosen by anyone and is judged on entropy instead.
-#
-# Worth knowing what these do and do not buy. NIST 800-63B advises against composition
-# rules precisely because they herd people to `Password1!` - the four classes are
-# satisfied and the result is among the first guesses anyone would make. They are kept
-# because they are what an examiner expects to see, and the length floor is what is
-# actually carrying the weight.
+# For a password its owner chooses; a generated handover password is judged on entropy.
+# NIST 800-63B advises against composition rules because they herd people to `Password1!`.
+# Kept because an examiner expects them, but the length floor carries the weight.
 PASSWORD_RULES = (
     ("uppercase", "an upper-case letter", lambda text: any(c.isupper() for c in text)),
     ("lowercase", "a lower-case letter", lambda text: any(c.islower() for c in text)),
@@ -227,14 +219,12 @@ def set_user_role(db: Session, *, user_id: str, role: str, acting_user_id: str,
                   scope_org_id: str | None = None) -> dict:
     """Promote or demote an existing account.
 
-    Same rules as creating one - a role must suit the organisation's type - plus two the
-    create path does not need: nobody changes their own role, and an organisation
-    administrator cannot grant engineer, because that is the operator's own role.
+    Same rules as creating one, plus two: nobody changes their own role, and an
+    organisation administrator cannot grant engineer.
 
-    There is deliberately no last-engineer guard here, unlike delete and disable. It
-    would be unreachable: engineer is the only role valid in an operator organisation, so
-    every attempt to move an engineer to something else is already refused for the
-    organisation's type. A branch that cannot run reads as a protection that exists.
+    No last-engineer guard here, unlike delete and disable - engineer is the only role
+    valid in an operator organisation, so demotion is already refused on type. A branch
+    that cannot run reads as a protection that exists.
     """
     allowed = ROLE_ORG_TYPES.get(role)
     if allowed is None:

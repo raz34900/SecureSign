@@ -1,11 +1,9 @@
 """Account management inside one organisation.
 
-Unlike the provider's panel this is reachable from the public web, because an
-administrator at a bank works from the bank. Every operation is therefore pinned to the
-caller's own organisation: `scope_org_id` is taken from the session, never from the
-request, so there is no parameter an administrator could point at a different
-institution. A user id belonging to another organisation reads as not found rather than
-forbidden, so the endpoint cannot be used to discover which ids exist.
+Reachable from the public web, unlike the provider's panel, because an administrator at a
+bank works from the bank. Every operation is pinned to the caller's own organisation:
+`scope_org_id` comes from the session, never the request, so there is no parameter to
+point at another institution. A foreign user id reads as not found, not forbidden.
 """
 from typing import Annotated, Literal
 

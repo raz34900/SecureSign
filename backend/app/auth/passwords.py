@@ -15,13 +15,12 @@ _HANDOVER_GROUP_SIZE = 4
 def generate_handover_password() -> str:
     """A one-time password nobody chose.
 
-    Whoever creates an account should not be able to pick what it opens with. Left to a
-    person the first password is `12341234aa` on every account in the building, and until
-    each owner signs in and replaces it that is a single guess away - which is exactly
-    the window a new, unused account sits in.
+    Whoever creates an account must not pick what it opens with: left to a person the
+    first password is `12341234aa` on every account in the building, and an unused
+    account sits in exactly that window until its owner signs in.
 
-    Sixteen characters from a 31-symbol alphabet is about 79 bits, grouped so it can be
-    read out once and typed once.
+    Sixteen characters from a 31-symbol alphabet, about 79 bits, grouped to be read out
+    once and typed once.
     """
     return "-".join("".join(secrets.choice(_HANDOVER_ALPHABET)
                             for _ in range(_HANDOVER_GROUP_SIZE))

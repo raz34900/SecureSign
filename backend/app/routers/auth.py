@@ -17,10 +17,9 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 _GENERIC = "Invalid credentials."
 
-# Verified against on the miss path so both branches cost the same. Without it the
-# answer arrives in 8 ms for a username that does not exist and 228 ms for one that
-# does, which enumerates every account for free and hands the attacker's whole guess
-# budget to accounts that are real. Measured on this deployment before the fix.
+# Verified against on the miss path so both branches cost the same. Measured here before
+# the fix: 8 ms for a username that does not exist, 228 ms for one that does, which
+# enumerates every account for free.
 _ABSENT_ACCOUNT_HASH = hash_password("no account by that name")
 
 # Identifiers, not labels: no spaces, no case ambiguity, nothing that changes when an

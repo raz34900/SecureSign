@@ -170,20 +170,14 @@ def record_outcome(verification_id: str, body: OutcomeBody, db: Session = Depend
                    user: CurrentUser = Depends(require_roles("verifier", "clerk"))) -> dict:
     """What the counter actually did once it had read the verdict.
 
-    Open to anyone who can run a verification, which is deliberately wider than the
-    neighbouring feedback endpoint and not an oversight. Reporting a verdict as wrong is
-    a claim about the model, and a subscriber has a standing incentive to file only one
-    direction of it. Recording an outcome is a statement about the recorder's own
-    counter: a merchant who honoured a signature the system called FRAUD is describing
-    their own exposure, and that row is evidence precisely because it is against
+    Wider than the neighbouring feedback endpoint, and not an oversight: recording an
+    outcome is a statement about the recorder's own counter, so a merchant who honoured a
+    FRAUD is describing their own exposure - evidence precisely because it is against
     interest.
 
-    A reason is required only when the outcome disagrees with the verdict. The field
-    exists to capture what the human knew and the model did not, and demanding it on the
-    agreeing path would teach people to type "ok" and stop reading.
-
-    Recorded once, and it never touches the verification row. The verdict stays what the
-    system decided; this is what happened next.
+    A reason is required only when the outcome disagrees with the verdict; demanding one
+    on the agreeing path teaches people to type "ok" and stop reading. Recorded once, and
+    it never touches the verification row.
     """
     record = verifications_repo.get_for_org(db, verification_id, user.org_id)
     if record is None:
@@ -210,25 +204,12 @@ def report_result(verification_id: str, body: FeedbackBody, db: Session = Depend
                   user: CurrentUser = Depends(require_roles("clerk"))) -> dict:
     """Flag a verification whose verdict the reporting institution believes was wrong.
 
-    Restricted to the enrolling side: the clerk role, and an org_admin at a financial
-    organisation, which is what `IMPLIED_ROLES` expands to clerk. No account at a
-    subscriber ever reaches it, and neither does a plain verifier at a bank - they hold
-    no reference set and enrolled nobody, so a claim about the model is not theirs to
-    file.
+    Restricted to the enrolling side on incentive, not trust: a merchant is paid either
+    way, so the cheapest correction they can file is always "that fraud was fine", and
+    these reports are engineering's ground truth. The bank carries the loss and holds the
+    references, so it is both motivated to report honestly and able to check first.
 
-    A subscriber is deliberately excluded, and the reason is incentive rather than trust
-    in the abstract. A merchant is paid whether or not the signature was genuine, and a
-    FRAUD verdict is what stands between them and the sale - so the cheapest correction
-    they can file is always "that fraud was fine". These reports are the engineering
-    team's ground truth for judging the model, so the one party with a standing reason to
-    misreport is the one party that must not be able to.
-
-    The bank carries the loss on a forgery it accepted, and holds the reference set the
-    decision was made against, so it is both motivated to report honestly and able to
-    check before it does.
-
-    The report never changes the stored verdict either way: it is a claim about a result,
-    not an amendment to it.
+    Never changes the stored verdict: a claim about a result, not an amendment to it.
     """
     record = verifications_repo.get_for_org(db, verification_id, user.org_id)
     if record is None:

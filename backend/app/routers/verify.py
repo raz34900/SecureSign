@@ -33,11 +33,9 @@ def _ink_fraction(image: Image.Image) -> float:
     return float((pixels < 128).mean())
 
 
-# Longest edge of the image the browser is asked to display. A region cut from a phone
-# photograph is several megapixels, and a decoded bitmap costs four bytes a pixel in the
-# tab whatever the PNG weighs. Showing one at full size cost about 23 MB per region on
-# an iPhone-sized photograph, on top of the original picture; a phone reclaims memory by
-# discarding the page, which reloads it and empties the form.
+# Longest edge the browser is asked to display. A decoded bitmap costs four bytes a pixel
+# whatever the PNG weighs - about 23 MB per full-size region on a phone photograph, which
+# is enough for the phone to discard the page and empty the form.
 PREVIEW_EDGE = 900
 
 
@@ -131,8 +129,6 @@ async def verify(request: Request,
         verification.run, db, request.app.state.embedder,
         national_id=national_id, image_bytes=data,
         org_id=user.org_id, user_id=user.user_id,
-        # Effective roles, not the bare one. An org_admin at a bank enrols customers and
-        # can already read the same images from /customers/{id}/references, so hiding
-        # them here withheld nothing - it just made the verify screen disagree with the
-        # rest of the product for the one account that runs the branch.
+        # Effective roles, not the bare one: an org_admin at a bank already reads these
+        # images from /customers/{id}/references, so hiding them here withheld nothing.
         include_references="clerk" in effective_roles(user))
