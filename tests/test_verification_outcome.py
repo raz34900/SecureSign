@@ -146,3 +146,27 @@ def test_an_unauthenticated_request_is_refused(client, seeded):
 def test_an_unknown_outcome_is_refused(client, seeded):
     row = run_one(client, "123456679")
     assert record(client, row["request_id"], "ignored").status_code == 422
+
+
+def test_a_borderline_result_needs_no_reason_whatever_the_clerk_did(client, seeded,
+                                                                   session_factory):
+    """The screen tells the clerk the model cannot separate genuine from forged here, so
+    demanding they justify contradicting it is asking them to argue with a coin flip."""
+    from backend.app.models_db import Verification
+    from signature_core.decision import THRESHOLD
+
+    row = run_one(client, "123456680")
+    with session_factory() as db:
+        stored = db.get(Verification, row["request_id"])
+        # Put the score on the line, where the band reads borderline whichever way the
+        # stored verdict happens to have fallen.
+        stored.distance = THRESHOLD
+        stored.threshold_used = THRESHOLD
+        db.commit()
+
+    detail = client.get(f"/verifications/{row['request_id']}").json()
+    assert detail["band"] == "borderline"
+
+    refused_direction = "rejected" if detail["verdict"] == "VALID" else "accepted"
+    recorded = record(client, row["request_id"], refused_direction)
+    assert recorded.status_code == 200, recorded.text
