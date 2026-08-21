@@ -21,24 +21,20 @@ def _count(db: Session, model, *where) -> int:
     return int(db.execute(select(func.count()).select_from(model).where(*where)).scalar_one())
 
 
-def histogram(distances: list[float]) -> list[dict]:
+def histogram(db: Session) -> list[dict]:
     """Fixed 0.05-wide buckets from 0 to 1. Anything above 1 lands in the last bucket."""
-    counts = [0] * BUCKET_COUNT
-    for distance in distances:
-        index = min(int(distance / BUCKET_WIDTH), BUCKET_COUNT - 1)
-        counts[max(index, 0)] += 1
+    counted = verifications_repo.distance_buckets(db, BUCKET_WIDTH, BUCKET_COUNT)
     return [{"lower": round(i * BUCKET_WIDTH, 2),
              "upper": round((i + 1) * BUCKET_WIDTH, 2),
-             "count": count} for i, count in enumerate(counts)]
+             "count": counted.get(i, 0)} for i in range(BUCKET_COUNT)]
 
 
 def overview(db: Session) -> dict:
     settings = get_settings()
     threshold = settings.threshold
 
-    distances = verifications_repo.all_distances(db)
     verdicts = verifications_repo.verdict_counts(db)
-    borderline = sum(1 for d in distances if band(d, threshold) == "borderline")
+    borderline = verifications_repo.borderline_count(db, threshold, BORDERLINE_MARGIN)
 
     per_verdict = [{"verdict": verdict,
                     "count": verdicts.get(verdict, 0),
@@ -60,7 +56,7 @@ def overview(db: Session) -> dict:
             "borderline": borderline,
             "by_verdict": per_verdict,
         },
-        "distance_histogram": histogram(distances),
+        "distance_histogram": histogram(db),
         "feedback": feedback_repo.status_counts(db),
     }
 
@@ -74,8 +70,7 @@ def feedback_queue(db: Session, status: str | None) -> list[dict]:
     """
     tally = feedback_repo.counts_by_org(db)
     out = []
-    for review, record, org in feedback_repo.list_with_context(db, status=status,
-                                                                source="institution"):
+    for review, record, org in feedback_repo.list_with_context(db, status=status):
         reports = tally.get(org.id, {})
         out.append({
             "feedback_id": review.id,

@@ -16,6 +16,9 @@ import cv2
 import numpy as np
 from PIL import Image
 
+from signature_core.anchors import extract_vertical_anchors
+from signature_core.quality import looks_like_signature
+
 DEFAULT_MIN_AREA_RATIO = 0.25
 
 PAPER = 255
@@ -143,3 +146,21 @@ def isolate_signature_ink(img: Image.Image,
     kept_mask = np.isin(labels, list(keep))
     cleaned = np.where(kept_mask, source, PAPER).astype(np.uint8)
     return Image.fromarray(cleaned)
+
+
+def candidate_crops(image_bytes: bytes) -> list[Image.Image]:
+    """Every region of a photograph that could be a signature, prepared for the model.
+
+    Enrolment and verification both need this, and CLAUDE.md requires them to prepare
+    images identically — a reference and a query prepared differently are not comparable.
+    Written out twice, that rule was enforced by hope; here it is enforced by there being
+    one copy.
+
+    Flatten first: extraction thresholds globally and cannot see past a shadow. Then drop
+    what cannot be handwriting, because the dark edge of a photographed page extracts as a
+    region like any other.
+    """
+    even = flatten_image_bytes(image_bytes)
+    return [crop for crop in (isolate_signature_ink(region)
+                              for region in extract_vertical_anchors(even))
+            if looks_like_signature(np.asarray(crop.convert("L")))]

@@ -24,10 +24,8 @@ from backend.app.repositories import (audit, customer_keys, customers as custome
                                       references as references_repo)
 from backend.app.security import envelope
 from backend.app.security.crypto import blind_index, encrypt_pii
-from signature_core.anchors import extract_vertical_anchors
-from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink, pad_for_rotation
+from signature_core.cleanup import candidate_crops, pad_for_rotation
 from signature_core.decision import decide
-from signature_core.quality import looks_like_signature
 
 _TTL_SECONDS = 15 * 60
 # Eight, not five: five was measured at ~20% false rejection on genuine signatures.
@@ -119,14 +117,7 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
     leaving them in stores a reference the model reads as a different writer.
     """
     staged = _get(enrolment_id, org_id)
-    # Flatten first: extraction thresholds globally and cannot see past a shadow.
-    even = flatten_image_bytes(image_bytes)
-    # Drop what cannot be handwriting before counting. The dark edge of a photographed
-    # page extracts as a region like any other, and it then fails the consistency check
-    # against the real specimens — which reads to the clerk as their card being rejected.
-    crops = [crop for crop in
-             (isolate_signature_ink(crop) for crop in extract_vertical_anchors(even))
-             if looks_like_signature(np.asarray(crop.convert("L")))]
+    crops = candidate_crops(image_bytes)
 
     if not crops:
         raise AppError("INSUFFICIENT_SIGNATURES",

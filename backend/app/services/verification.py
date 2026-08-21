@@ -140,7 +140,7 @@ def purge_expired_query_images_occasionally(db: Session) -> None:
         log.exception("retention purge failed")
 
 
-def reference_views_for(db: Session, customer_id: str, threshold: float) -> list[dict]:
+def reference_views_for(db: Session, customer_id: str) -> list[dict]:
     """The customer's reference signatures as they stand now.
 
     Deliberately without per-reference distances: those were computed at the time and

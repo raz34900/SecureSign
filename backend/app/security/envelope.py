@@ -21,9 +21,8 @@ with database access but no shell — which is most of what actually happens —
 """
 import os
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from backend.app.security.crypto import seal, unseal
 
-_NONCE_LEN = 12
 DEK_LEN = 32  # AES-256
 
 
@@ -33,12 +32,11 @@ def new_dek() -> bytes:
 
 def wrap_dek(dek: bytes, kek_hex: str) -> bytes:
     """A customer's key, encrypted under the environment's key. Never stored bare."""
-    nonce = os.urandom(_NONCE_LEN)
-    return nonce + AESGCM(bytes.fromhex(kek_hex)).encrypt(nonce, dek, None)
+    return seal(bytes.fromhex(kek_hex), dek)
 
 
 def unwrap_dek(wrapped: bytes, kek_hex: str) -> bytes:
-    return AESGCM(bytes.fromhex(kek_hex)).decrypt(wrapped[:_NONCE_LEN], wrapped[_NONCE_LEN:], None)
+    return unseal(bytes.fromhex(kek_hex), wrapped)
 
 
 def encrypt_image(data: bytes, dek: bytes, *, aad: bytes | None = None) -> bytes:
@@ -48,9 +46,8 @@ def encrypt_image(data: bytes, dek: bytes, *, aad: bytes | None = None) -> bytes
     still decrypt, which would let anyone with write access to the database swap one
     person's signature for another's without leaving a decryption failure behind.
     """
-    nonce = os.urandom(_NONCE_LEN)
-    return nonce + AESGCM(dek).encrypt(nonce, data, aad)
+    return seal(dek, data, aad)
 
 
 def decrypt_image(blob: bytes, dek: bytes, *, aad: bytes | None = None) -> bytes:
-    return AESGCM(dek).decrypt(blob[:_NONCE_LEN], blob[_NONCE_LEN:], aad)
+    return unseal(dek, blob, aad)

@@ -12,14 +12,11 @@ from backend.app.models_db import User
 from backend.app.repositories import audit, customers as customers_repo
 from backend.app.repositories import feedback as feedback_repo
 from backend.app.repositories import verifications as verifications_repo
-from backend.app.services import verification
+from backend.app.services import accounts, verification
 from signature_core.decision import band
 from backend.app.security.crypto import blind_index, decrypt_pii
 
 router = APIRouter(tags=["history"])
-
-NationalId = Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
-
 
 class FeedbackBody(BaseModel):
     claimed_label: Literal["genuine", "forged"]
@@ -63,8 +60,8 @@ def _mask(national_id: str) -> str:
     return "•" * (len(national_id) - 4) + national_id[-4:]
 
 
-PAGE_SIZE = 50
-MAX_PAGE_SIZE = 200
+PAGE_SIZE = accounts.DEFAULT_PAGE
+MAX_PAGE_SIZE = accounts.MAX_PAGE
 
 
 @router.get("/verifications")
@@ -156,8 +153,7 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
         "outcome": _outcome_view(db, verification_id),
     }
     if "clerk" in effective_roles(user) and customer is not None:
-        detail["references"] = verification.reference_views_for(db, customer.id,
-                                                               record.threshold_used)
+        detail["references"] = verification.reference_views_for(db, customer.id)
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="view_verification",
                 resource_type="verification", resource_id=verification_id, outcome="allowed")
     return detail

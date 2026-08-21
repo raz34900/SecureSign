@@ -281,3 +281,21 @@ def test_every_genuine_specimen_on_a_card_survives_the_plausibility_check():
                  for crop in extract_vertical_anchors(flatten_image_bytes(make_specimen_card(count)))]
         kept = [c for c in crops if looks_like_signature(np.asarray(c.convert("L")))]
         assert len(kept) == len(crops) == count
+
+
+def test_enrolment_and_verification_call_the_same_pipeline():
+    """CLAUDE.md requires the two to prepare images identically. Written out twice that
+    was enforced by hope; this asserts there is one copy and both sides reach for it."""
+    from pathlib import Path
+
+    for module in ("backend/app/services/enrolment.py", "backend/app/routers/verify.py"):
+        source = Path(module).read_text()
+        assert "candidate_crops" in source, f"{module} no longer uses the shared pipeline"
+        assert "extract_vertical_anchors" not in source, f"{module} extracts on its own again"
+
+
+def test_the_shared_pipeline_finds_every_signature_on_a_card():
+    from signature_core.cleanup import candidate_crops
+
+    for count in (8, 9, 10):
+        assert len(candidate_crops(make_specimen_card(count))) == count

@@ -125,8 +125,10 @@ class ModelFeedback(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     verification_id: Mapped[str | None] = mapped_column(ForeignKey("verifications.id"), nullable=True)
     submitted_by: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    source: Mapped[str] = mapped_column(String(20), default="engineer")  # engineer | institution
     status: Mapped[str] = mapped_column(String(10), default="pending")   # pending | accepted | rejected
+    # Always "institution" today, and that is the point: a subscriber cannot file a
+    # report at all, so the column records which side of that rule a row came from.
+    source: Mapped[str] = mapped_column(String(20), default="institution")
     claimed_label: Mapped[str] = mapped_column(String(10))               # genuine | forged
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_version: Mapped[str] = mapped_column(String(40))
