@@ -7,7 +7,6 @@ signature is verified against the customer's existing references (anti-impersona
 import base64
 import hashlib
 import io
-import os
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -21,7 +20,9 @@ from sqlalchemy.orm import Session
 from backend.app.config import get_settings
 from backend.app.errors import AppError
 from backend.app.models_db import ConsentRecord, Customer
-from backend.app.repositories import audit, customers as customers_repo, references as references_repo
+from backend.app.repositories import (audit, customer_keys, customers as customers_repo,
+                                      references as references_repo)
+from backend.app.security import envelope
 from backend.app.security.crypto import blind_index, encrypt_pii
 from signature_core.anchors import extract_vertical_anchors
 from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink, pad_for_rotation
@@ -58,20 +59,20 @@ class _Staged:
 _store: dict[str, _Staged] = {}
 
 
-def _digest(crop: Image.Image) -> str:
+def _png_bytes(crop: Image.Image) -> bytes:
     buf = io.BytesIO()
     crop.save(buf, format="PNG")
-    return hashlib.sha256(buf.getvalue()).hexdigest()
+    return buf.getvalue()
+
+
+def _digest(crop: Image.Image) -> str:
+    return hashlib.sha256(_png_bytes(crop)).hexdigest()
 
 
 def _crop_views(staged: _Staged) -> list[dict]:
-    out = []
-    for crop_id, crop in staged.crops.items():
-        buf = io.BytesIO()
-        crop.save(buf, format="PNG")
-        out.append({"crop_id": crop_id,
-                    "preview_png_base64": base64.b64encode(buf.getvalue()).decode()})
-    return out
+    return [{"crop_id": crop_id,
+             "preview_png_base64": base64.b64encode(_png_bytes(crop)).decode()}
+            for crop_id, crop in staged.crops.items()]
 
 
 def _purge() -> None:
@@ -180,7 +181,7 @@ def staged_crops(enrolment_id: str, org_id: str) -> list[dict]:
 
 
 def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
-            samples_dir: str, org_id: str) -> tuple[Customer, int]:
+            org_id: str) -> tuple[Customer, int]:
     """Returns the customer and how many references were actually stored.
 
     The count is not len(crop_ids). The same crop asked for twice is one signature, and
@@ -190,24 +191,33 @@ def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
     staged = _get(enrolment_id, org_id)
     selected = [staged.crops[c] for c in dict.fromkeys(crop_ids) if c in staged.crops]
     if staged.target_customer_id is None:
-        customer = _approve_new(db, embedder, staged, selected, samples_dir)
+        customer = _approve_new(db, embedder, staged, selected)
     else:
-        customer = _approve_append(db, embedder, staged, selected, samples_dir)
+        customer = _approve_append(db, embedder, staged, selected)
     del _store[enrolment_id]
     return customer, len(selected)
 
 
-def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_dir: str,
+def _store_crops(db: Session, embedder, customer_id: str, org_id: str,
                  crops: list[Image.Image], vectors: list[np.ndarray] | None = None) -> None:
-    os.makedirs(os.path.join(samples_dir, customer_id), exist_ok=True)
+    """The crop goes into the row, encrypted, rather than into a file beside it.
+
+    Stored at the resolution it was cut at, not at the 224x224 the model reads. The
+    embedding is derived and can be rebuilt; the crop is the archive it would be rebuilt
+    from, and downscaling it now would bake today's transform into it permanently.
+
+    The reference id is the additional authenticated data, so a ciphertext lifted onto
+    another row fails to decrypt instead of quietly standing in for someone else's
+    signature.
+    """
+    dek = customer_keys.key_for(db, customer_id)
     for index, crop in enumerate(crops):
         embedding = (vectors[index] if vectors is not None
                      else embedder.embed(pad_for_rotation(crop)))
         ref = references_repo.add(db, customer_id, org_id, image_path="", embedding=embedding)
         db.flush()
-        path = os.path.join(samples_dir, customer_id, f"{ref.id}.png")
-        crop.save(path)
-        ref.image_path = path
+        ref.image_encrypted = envelope.encrypt_image(_png_bytes(crop), dek,
+                                                     aad=ref.id.encode())
 
 
 # Removed deliberately, not lost. A first enrolment used to score every specimen against
@@ -225,8 +235,8 @@ def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_d
 # case where there is something to compare against and something to protect.
 
 
-def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Image],
-                 samples_dir: str) -> Customer:
+def _approve_new(db: Session, embedder, staged: _Staged,
+                 selected: list[Image.Image]) -> Customer:
     if not (MIN_REFS <= len(selected) <= MAX_REFS):
         raise AppError("INSUFFICIENT_SIGNATURES",
                        f"Between {MIN_REFS} and {MAX_REFS} approved signatures are required.", 422)
@@ -244,7 +254,7 @@ def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Im
         db.flush()
         db.add(ConsentRecord(customer_id=customer.id, org_id=staged.org_id,
                              method=staged.consent_method))
-        _store_crops(db, embedder, customer.id, staged.org_id, samples_dir, selected, vectors)
+        _store_crops(db, embedder, customer.id, staged.org_id, selected, vectors)
         db.commit()
     except IntegrityError:
         db.rollback()
@@ -254,8 +264,8 @@ def _approve_new(db: Session, embedder, staged: _Staged, selected: list[Image.Im
     return customer
 
 
-def _approve_append(db: Session, embedder, staged: _Staged, selected: list[Image.Image],
-                    samples_dir: str) -> Customer:
+def _approve_append(db: Session, embedder, staged: _Staged,
+                    selected: list[Image.Image]) -> Customer:
     customer = customers_repo.get_active(db, staged.target_customer_id)
     if customer is None:
         raise AppError("CUSTOMER_NOT_FOUND", "Customer not found.", 404)
@@ -297,7 +307,7 @@ def _approve_append(db: Session, embedder, staged: _Staged, selected: list[Image
         raise AppError("SIGNATURE_MISMATCH",
                        "Submitted signatures do not match the registered customer.", 409)
 
-    _store_crops(db, embedder, customer.id, staged.org_id, samples_dir, selected, vectors)
+    _store_crops(db, embedder, customer.id, staged.org_id, selected, vectors)
     has_consent = db.execute(select(ConsentRecord.id).where(
         ConsentRecord.customer_id == customer.id,
         ConsentRecord.org_id == staged.org_id)).first() is not None

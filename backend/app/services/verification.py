@@ -8,14 +8,16 @@ from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from PIL import Image, ImageOps
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
 from backend.app.errors import AppError
 from backend.app.models_db import ReferenceSignature, Verification
-from backend.app.repositories import audit, customers as customers_repo, references as references_repo
+from backend.app.repositories import (audit, customer_keys, customers as customers_repo,
+                                      references as references_repo)
 from backend.app.repositories import verifications as verifications_repo
+from backend.app.security import envelope
 from backend.app.security.crypto import blind_index
 from signature_core.cleanup import pad_for_rotation
 from signature_core.decision import calculate_confidence, decide
@@ -28,7 +30,6 @@ log = logging.getLogger("securesign")
 # Where the compared image is kept, and for how long. The verdict is permanent; the
 # picture behind it is not. Ninety days is a review window for a clerk looking back at a
 # result that now looks odd, not an archive of everyone's signature.
-QUERY_IMAGE_DIR = "data/verification_queries"
 QUERY_IMAGE_RETENTION_DAYS = 90
 
 
@@ -46,23 +47,49 @@ def normalised_png(query_img: Image.Image) -> bytes:
     return buffer.getvalue()
 
 
-def store_query_image(verification_id: str, query_img: Image.Image,
-                      directory: str | None = None) -> str | None:
-    """Best effort: a verdict must never fail to be recorded because a disk write did.
+def encrypted_query_image(db: Session, verification_id: str, customer_id: str,
+                          query_img: Image.Image) -> bytes | None:
+    """The compared image, encrypted under the customer's key, ready to go on the row.
 
-    Resolved at call time, not bound as a default: a default argument captures the module
-    value at import, so a test redirecting the directory would still be writing into the
-    real one.
+    Best effort on purpose: a verdict must never fail to be recorded because storing the
+    picture behind it did. A row with no image is a row that kept its verdict.
+
+    The verification id is the additional authenticated data, so a ciphertext moved onto
+    a different verification fails to decrypt rather than illustrating the wrong decision.
     """
     try:
-        directory = directory or QUERY_IMAGE_DIR
-        os.makedirs(directory, exist_ok=True)
-        path = os.path.join(directory, f"{verification_id}.png")
-        with open(path, "wb") as handle:
-            handle.write(normalised_png(query_img))
-        return path
-    except OSError:
+        dek = customer_keys.key_for(db, customer_id)
+        return envelope.encrypt_image(normalised_png(query_img), dek,
+                                      aad=verification_id.encode())
+    except Exception:
         log.warning("could not store the compared image for verification %s", verification_id)
+        return None
+
+
+def decrypt_query_image(db: Session, row: Verification) -> bytes | None:
+    """None once the retention window has passed, once the key is destroyed, or for a row
+    written before images moved into the database and whose file is gone."""
+    if row.query_image_encrypted:
+        dek = customer_keys.existing_key_for(db, row.customer_id)
+        if dek is None:
+            return None  # key destroyed: the image is unrecoverable, and that is the point
+        try:
+            return envelope.decrypt_image(row.query_image_encrypted, dek,
+                                          aad=row.id.encode())
+        except Exception:
+            log.warning("compared image for verification %s did not decrypt", row.id)
+            return None
+    return _read_legacy_file(row.query_image_path)
+
+
+def _read_legacy_file(path: str | None) -> bytes | None:
+    """Rows written before the images moved into the database still point at a file."""
+    if not path:
+        return None
+    try:
+        with open(path, "rb") as handle:
+            return handle.read()
+    except OSError:
         return None
 
 
@@ -74,14 +101,17 @@ def purge_expired_query_images(db: Session, *, days: int = QUERY_IMAGE_RETENTION
     """
     cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
     stale = db.execute(select(Verification).where(
-        Verification.query_image_path.is_not(None),
+        or_(Verification.query_image_encrypted.is_not(None),
+            Verification.query_image_path.is_not(None)),
         Verification.created_at < cutoff)).scalars().all()
     for row in stale:
-        try:
-            os.remove(row.query_image_path)
-        except OSError:
-            pass  # already gone; the point is that the row stops pointing at it
+        if row.query_image_path:
+            try:
+                os.remove(row.query_image_path)
+            except OSError:
+                pass  # already gone; the point is that the row stops pointing at it
         row.query_image_path = None
+        row.query_image_encrypted = None
     if stale:
         db.commit()
         log.info("purged %d compared image(s) older than %d days", len(stale), days)
@@ -119,14 +149,32 @@ def reference_views_for(db: Session, customer_id: str, threshold: float) -> list
     would invite reading one as the cause of the other.
     """
     views = []
+    dek = customer_keys.existing_key_for(db, customer_id)
     for ref in references_repo.all_for(db, customer_id):
-        try:
-            with Image.open(ref.image_path) as stored:
-                views.append({"reference_id": ref.id,
-                              "image_png_base64": query_preview(stored.convert("L"))})
-        except OSError:
+        raw = reference_image_bytes(ref, dek)
+        if raw is None:
             continue
+        with Image.open(io.BytesIO(raw)) as stored:
+            views.append({"reference_id": ref.id,
+                          "image_png_base64": query_preview(stored.convert("L"))})
     return views
+
+
+def reference_image_bytes(ref: ReferenceSignature, dek: bytes | None) -> bytes | None:
+    """The stored crop as PNG bytes, whichever way this row happens to hold it.
+
+    Never raises. A reference that cannot be read is skipped by every caller rather than
+    failing the whole view - one unreadable row must not hide the other nine.
+    """
+    if ref.image_encrypted:
+        if dek is None:
+            return None
+        try:
+            return envelope.decrypt_image(ref.image_encrypted, dek, aad=ref.id.encode())
+        except Exception:
+            log.warning("reference %s did not decrypt", ref.id)
+            return None
+    return _read_legacy_file(ref.image_path or None)
 
 
 def query_preview(query_img: Image.Image) -> str:
@@ -140,23 +188,24 @@ def query_preview(query_img: Image.Image) -> str:
     return base64.b64encode(normalised_png(query_img)).decode()
 
 
-def _reference_views(refs: list[ReferenceSignature], distances: list[float],
-                     threshold: float) -> list[dict]:
+def _reference_views(db: Session, refs: list[ReferenceSignature], distances: list[float],
+                     threshold: float, customer_id: str) -> list[dict]:
     """Per-anchor breakdown for the enrolling side of the house (clerks)."""
     views = []
+    dek = customer_keys.existing_key_for(db, customer_id)
     for ref, distance in zip(refs, distances):
-        try:
-            # Through the same transform as the query, not the stored crop. Enrolment
-            # keeps a flattened photograph, which carries the paper's grain; the query
-            # is shown normalised. Side by side that reads as the reference having
-            # skipped preparation, and it has not - Otsu removes the grain and the model
-            # never sees it. Showing the two at different stages of the same pipeline
-            # invites exactly the wrong conclusion, so show both at the stage that
-            # decided the number underneath them.
-            with Image.open(ref.image_path) as stored:
-                image = query_preview(stored.convert("L"))
-        except OSError:
-            continue  # missing file: skip, never 500 the whole verification
+        raw = reference_image_bytes(ref, dek)
+        if raw is None:
+            continue  # unreadable or erased: skip, never 500 the whole verification
+        # Through the same transform as the query, not the stored crop. Enrolment keeps
+        # a flattened photograph, which carries the paper's grain; the query is shown
+        # normalised. Side by side that reads as the reference having skipped
+        # preparation, and it has not - Otsu removes the grain and the model never sees
+        # it. Showing the two at different stages of the same pipeline invites exactly
+        # the wrong conclusion, so show both at the stage that decided the number
+        # underneath them.
+        with Image.open(io.BytesIO(raw)) as stored:
+            image = query_preview(stored.convert("L"))
         views.append({"reference_id": ref.id,
                       "image_png_base64": image,
                       "distance": round(distance, 4),
@@ -210,7 +259,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
                                  threshold=result.threshold, confidence=result.confidence,
                                  model_version=settings.model_version)
     db.flush()
-    row.query_image_path = store_query_image(row.id, query_img)
+    row.query_image_encrypted = encrypted_query_image(db, row.id, customer.id, query_img)
     audit.write(db, user_id=user_id, org_id=org_id, action="verify",
                 resource_type="customer", resource_id=customer.id, outcome="allowed",
                 detail={"decision": result.verdict, "verification_id": row.id})
@@ -227,7 +276,8 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         "query_preview_png_base64": query_preview(query_img),
     }
     if include_references:
-        response["references"] = _reference_views(refs, distances, result.threshold)
+        response["references"] = _reference_views(db, refs, distances,
+                                                  result.threshold, customer.id)
         audit.write(db, user_id=user_id, org_id=org_id, action="view_references",
                     resource_type="customer", resource_id=customer.id, outcome="allowed",
                     detail={"verification_id": row.id})

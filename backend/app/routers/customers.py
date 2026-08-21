@@ -14,16 +14,15 @@ from backend.app.errors import AppError
 from backend.app.models_db import Customer, ReferenceSignature
 from backend.app.repositories import audit
 from backend.app.repositories import customers as customers_repo
+from backend.app.repositories import customer_keys
 from backend.app.repositories import references as references_repo
 from backend.app.security.crypto import blind_index
-from backend.app.services import enrolment
+from backend.app.services import enrolment, verification
 from signature_core.quality import validate_image_quality
 
 router = APIRouter(prefix="/customers", tags=["customers"])
 
 NationalId = Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
-
-SAMPLES_DIR = "data/enrolment_samples"
 
 
 class Consent(BaseModel):
@@ -112,7 +111,7 @@ def approve_references(enrolment_id: str, body: ApproveBody, request: Request,
                        db: Session = Depends(get_db),
                        user: CurrentUser = Depends(require_roles("clerk"))) -> dict:
     customer, stored = enrolment.approve(db, request.app.state.embedder, enrolment_id,
-                                         body.crop_ids, SAMPLES_DIR, user.org_id)
+                                         body.crop_ids, user.org_id)
     return {"customer_id": customer.id, "reference_count": stored}
 
 
@@ -161,14 +160,14 @@ def get_references(customer_id: str, db: Session = Depends(get_db),
     if customer is None or not _may_manage(db, customer, user.org_id):
         raise _not_found()
     rows = references_repo.own_references(db, customer.id, user.org_id)
+    dek = customer_keys.existing_key_for(db, customer.id)
     images = []
     for ref in rows:
-        try:
-            with open(ref.image_path, "rb") as f:
-                images.append({"reference_id": ref.id,
-                               "image_png_base64": base64.b64encode(f.read()).decode()})
-        except OSError:
-            continue  # missing file: skip, never 500 the whole view
+        raw = verification.reference_image_bytes(ref, dek)
+        if raw is None:
+            continue  # unreadable or erased: skip, never 500 the whole view
+        images.append({"reference_id": ref.id,
+                       "image_png_base64": base64.b64encode(raw).decode()})
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="view_references",
                 resource_type="customer", resource_id=customer.id, outcome="allowed")
     return {"customer_id": customer.id, "references": images}
@@ -187,10 +186,11 @@ def delete_reference(customer_id: str, reference_id: str, db: Session = Depends(
     image_path = ref.image_path
     db.delete(ref)
     db.commit()
-    try:
-        os.remove(image_path)
-    except OSError:
-        pass  # file already gone: the row is what matters
+    if image_path:
+        try:
+            os.remove(image_path)
+        except OSError:
+            pass  # predates the move into the database, and the file is already gone
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="delete_reference",
                 resource_type="reference", resource_id=reference_id, outcome="allowed",
                 detail={"customer_id": customer_id})

@@ -1,12 +1,17 @@
-"""Recompute every stored reference embedding from the image already on disk.
+"""Recompute every stored reference embedding from the stored image.
 
 The embedding a reference carries was produced by whatever preparation was in force the
 day it was enrolled. When that preparation changes - a new cleanup stage, a fixed
 extraction bug - stored references and fresh queries stop being comparable, and every
 customer enrolled before the change starts failing verification for no reason they did.
 
-This re-runs the current preparation over the stored PNG and writes the new vector. The
-image is the record; the embedding is derived, and derived data can be rebuilt.
+This re-runs the current preparation over the stored crop and writes the new vector. The
+image is the record; the embedding is derived, and derived data can be rebuilt - which is
+why the crop is archived at the resolution it was cut at rather than at the 224x224 the
+model reads.
+
+A customer whose key has been destroyed has no readable image, so there is nothing to
+rebuild from and the row is reported rather than guessed at.
 
     python scripts/reembed_references.py --dry-run
     python scripts/reembed_references.py
@@ -14,6 +19,7 @@ image is the record; the embedding is derived, and derived data can be rebuilt.
 Nothing else changes: the same row, the same image, the same customer.
 """
 import argparse
+import io
 import sys
 
 import numpy as np
@@ -24,6 +30,8 @@ from backend.app.config import get_settings
 from backend.app.db import make_engine, make_session_factory
 from backend.app import models_db  # noqa: F401
 from backend.app.models_db import ReferenceSignature
+from backend.app.repositories import customer_keys
+from backend.app.services.verification import reference_image_bytes
 from signature_core.cleanup import isolate_signature_ink, pad_for_rotation
 from signature_core.embed import Embedder
 
@@ -43,13 +51,16 @@ def main() -> int:
         rows = db.execute(select(ReferenceSignature)).scalars().all()
         print(f"{len(rows)} reference(s) on file\n")
 
+        keys: dict[str, bytes | None] = {}
         for ref in rows:
-            try:
-                image = Image.open(ref.image_path).convert("L")
-            except OSError:
-                print(f"  {ref.id[:8]}  MISSING IMAGE  {ref.image_path}")
+            if ref.customer_id not in keys:
+                keys[ref.customer_id] = customer_keys.existing_key_for(db, ref.customer_id)
+            raw = reference_image_bytes(ref, keys[ref.customer_id])
+            if raw is None:
+                print(f"  {ref.id[:8]}  UNREADABLE IMAGE  customer {ref.customer_id[:8]}")
                 missing += 1
                 continue
+            image = Image.open(io.BytesIO(raw)).convert("L")
 
             # The same two steps enrolment and verification run.
             vector = embedder.embed(pad_for_rotation(isolate_signature_ink(image)))
@@ -73,8 +84,9 @@ def main() -> int:
     verb = "would rebuild" if args.dry_run else "rebuilt"
     print(f"\n{verb} {rebuilt}, unchanged {unchanged}, missing image {missing}")
     if missing:
-        print("A reference whose image is gone keeps its old vector and is now "
-              "inconsistent with the rest. Delete it, or re-enrol that customer.")
+        print("A reference whose image cannot be read keeps its old vector and is now "
+              "inconsistent with the rest. Delete it, or re-enrol that customer. If the "
+              "customer's key was destroyed, that is erasure working as intended.")
     return 1 if missing else 0
 
 

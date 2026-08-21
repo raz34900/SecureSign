@@ -111,7 +111,7 @@ def history(db: Session = Depends(get_db),
             "performed_by": username,
             "feedback": None if review is None else {
                 "claimed_label": review.claimed_label, "status": review.status},
-            "has_image": record.query_image_path is not None,
+            "has_image": record.query_image_encrypted is not None,
         })
     return {"verifications": out, "total": total, "limit": limit, "offset": offset}
 
@@ -146,7 +146,7 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
         "customer_name": None if customer is None else customer.full_name,
         "national_id_masked": None if customer is None else _mask(
             decrypt_pii(customer.national_id_encrypted, settings.pii_enc_key)),
-        "compared_png_base64": _read_query_image(record.query_image_path),
+        "compared_png_base64": _encoded(verification.decrypt_query_image(db, record)),
         "retention_days": verification.QUERY_IMAGE_RETENTION_DAYS,
         "feedback": None if review is None else {
             "claimed_label": review.claimed_label, "status": review.status},
@@ -160,16 +160,10 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
     return detail
 
 
-def _read_query_image(path: str | None) -> str | None:
-    """None once the retention window has passed, or if the file is gone. The verdict
-    outlives the picture on purpose."""
-    if not path:
-        return None
-    try:
-        with open(path, "rb") as handle:
-            return base64.b64encode(handle.read()).decode()
-    except OSError:
-        return None
+def _encoded(raw: bytes | None) -> str | None:
+    """None once the retention window has passed, or once the customer's key is gone.
+    The verdict outlives the picture on purpose."""
+    return None if raw is None else base64.b64encode(raw).decode()
 
 
 @router.post("/verifications/{verification_id}/outcome")

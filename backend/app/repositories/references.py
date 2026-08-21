@@ -18,9 +18,10 @@ def decode_embedding(blob: bytes | None) -> np.ndarray | None:
 
 
 def add(db: Session, customer_id: str, org_id: str, image_path: str,
-        embedding: np.ndarray) -> ReferenceSignature:
+        embedding: np.ndarray, image_encrypted: bytes | None = None) -> ReferenceSignature:
     ref = ReferenceSignature(customer_id=customer_id, org_id=org_id, image_path=image_path,
-                             embedding=embedding.astype(np.float32).tobytes())
+                             embedding=embedding.astype(np.float32).tobytes(),
+                             image_encrypted=image_encrypted)
     db.add(ref)
     return ref
 
