@@ -9,6 +9,7 @@ import {
   formatDateTime,
   formatDistance,
   decisionLabel,
+  noticeClass,
   isNationalId,
   pngSrc,
 } from '../format.js'
@@ -258,15 +259,7 @@ function toggleAnchor(anchor) {
 
 /* ---------- file handling ---------- */
 
-const CAPTURE_THEMES = {
-  good: { panel: 'border-valid-border bg-valid-surface', title: 'text-valid' },
-  warning: { panel: 'border-warning-border bg-warning-surface', title: 'text-warning' },
-  error: { panel: 'border-danger-border bg-danger-surface', title: 'text-danger' },
-}
-
-const captureTheme = computed(
-  () => CAPTURE_THEMES[captureNotice.value?.level] ?? CAPTURE_THEMES.warning,
-)
+const captureTheme = computed(() => noticeClass(captureNotice.value?.level ?? 'warning'))
 
 function handleFileChange(event) {
   const chosen = event.target.files && event.target.files[0]
@@ -598,10 +591,10 @@ async function reset() {
         <!-- Advice about the picture, never a block on sending it. -->
         <div
           v-if="captureNotice"
-          :class="captureTheme.panel"
+          :class="captureTheme"
           class="mt-3 rounded-lg border px-4 py-3"
         >
-          <p :class="captureTheme.title" class="text-sm font-semibold">
+          <p class="text-sm font-semibold">
             {{ captureNotice.title }}
           </p>
           <p class="mt-1 text-sm text-ink">{{ captureNotice.message }}</p>

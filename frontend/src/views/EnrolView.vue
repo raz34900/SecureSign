@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { get, postJson, postForm, ApiError } from '../api.js'
 import { assessCapture } from '../capture.js'
 import { save as saveWizard, load as loadWizard, clear as clearWizard } from '../enrolStorage.js'
+import { noticeClass } from '../format.js'
 import CaptureGuide from '../components/CaptureGuide.vue'
 
 /** Most references a customer may hold. */
@@ -404,19 +405,13 @@ function connectorClass(n) {
   // Connector before step n is "filled" once step n has been reached.
   return typeof step.value === 'number' && step.value >= n ? 'bg-brand-green' : 'bg-border-strong'
 }
-
-function bannerClass(level) {
-  if (level === 'good') return 'border-valid-border bg-valid-surface text-valid'
-  if (level === 'warning') return 'border-warning-border bg-warning-surface text-warning'
-  return 'border-danger-border bg-danger-surface text-danger'
-}
 </script>
 
 <template>
   <div class="max-w-2xl mx-auto">
     <h1 class="text-2xl font-bold text-navy mb-6">Enrol customer</h1>
 
-    <div v-if="expiredMessage" class="mb-6 rounded-lg border px-4 py-3 text-sm" :class="bannerClass('warning')">
+    <div v-if="expiredMessage" class="mb-6 rounded-lg border px-4 py-3 text-sm" :class="noticeClass('warning')">
       {{ expiredMessage }}
     </div>
 
@@ -491,7 +486,7 @@ function bannerClass(level) {
         <span>Customer consents to shared verification by subscribing organisations</span>
       </label>
 
-      <div v-if="step1Error" class="rounded-lg border px-4 py-3 text-sm" :class="bannerClass('error')">
+      <div v-if="step1Error" class="rounded-lg border px-4 py-3 text-sm" :class="noticeClass('error')">
         {{ step1Error }}
       </div>
 
@@ -551,7 +546,7 @@ function bannerClass(level) {
       <div
         v-if="captureNotice"
         class="rounded-lg border px-4 py-3 text-sm space-y-1"
-        :class="bannerClass(captureNotice.level)"
+        :class="noticeClass(captureNotice.level)"
       >
         <p class="font-semibold">{{ captureNotice.title }}</p>
         <p class="text-ink">{{ captureNotice.message }}</p>
@@ -564,7 +559,7 @@ function bannerClass(level) {
         </button>
       </div>
 
-      <div v-if="step2Error" class="rounded-lg border px-4 py-3 text-sm" :class="bannerClass(step2Error.level)">
+      <div v-if="step2Error" class="rounded-lg border px-4 py-3 text-sm" :class="noticeClass(step2Error.level)">
         {{ step2Error.message }}
       </div>
 
@@ -593,7 +588,7 @@ function bannerClass(level) {
         </button>
       </div>
 
-      <div v-if="showCancelConfirm" class="rounded-lg border px-4 py-3 text-sm space-y-2" :class="bannerClass('warning')">
+      <div v-if="showCancelConfirm" class="rounded-lg border px-4 py-3 text-sm space-y-2" :class="noticeClass('warning')">
         <p>Cancel this enrolment. The entered details and uploaded specimen will be discarded.</p>
         <div class="flex flex-wrap gap-2">
           <button type="button" class="min-h-11 px-3 rounded-lg border border-border-strong bg-surface text-ink font-medium" @click="dismissCancel">
@@ -672,7 +667,7 @@ function bannerClass(level) {
         </button>
       </div>
 
-      <div v-if="step3Error" class="rounded-lg border px-4 py-3 text-sm space-y-1" :class="bannerClass(step3Error.level)">
+      <div v-if="step3Error" class="rounded-lg border px-4 py-3 text-sm space-y-1" :class="noticeClass(step3Error.level)">
         <p>{{ step3Error.message }}</p>
         <p v-if="step3Error.note" class="font-medium">{{ step3Error.note }}</p>
       </div>
@@ -702,7 +697,7 @@ function bannerClass(level) {
         </button>
       </div>
 
-      <div v-if="showCancelConfirm" class="rounded-lg border px-4 py-3 text-sm space-y-2" :class="bannerClass('warning')">
+      <div v-if="showCancelConfirm" class="rounded-lg border px-4 py-3 text-sm space-y-2" :class="noticeClass('warning')">
         <p>Cancel this enrolment. The entered details and uploaded specimen will be discarded.</p>
         <div class="flex flex-wrap gap-2">
           <button type="button" class="min-h-11 px-3 rounded-lg border border-border-strong bg-surface text-ink font-medium" @click="dismissCancel">

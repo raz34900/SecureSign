@@ -2,9 +2,8 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { get, del, ApiError } from '../api.js'
-import { formatDateTime } from '../format.js'
+import { formatDateTime , isNationalId } from '../format.js'
 
-const DEFAULT_FLOOR = 8
 
 const lookupId = ref('')
 const loading = ref(false)
@@ -16,7 +15,7 @@ const references = ref([])
 const confirmingId = ref(null)
 const deleteNotice = ref(null) // { level: 'warning' | 'error', message }
 
-const referenceFloor = computed(() => customer.value?.reference_floor ?? DEFAULT_FLOOR)
+const referenceFloor = computed(() => customer.value?.reference_floor)
 
 /* The floor counts every organisation's references, because verification compares
    against all of them. An org with few of its own may still be free to delete. */
@@ -25,7 +24,7 @@ const atReferenceFloor = computed(
 )
 
 function isValidNationalId(value) {
-  return /^\d{9}$/.test(value)
+  return isNationalId(value)
 }
 
 function handleEscape(event) {

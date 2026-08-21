@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { get, postJson, ApiError } from '../api.js'
 import { formatDistance, formatConfidence, formatDateTime } from '../format.js'
+import NoticeBanner from '../components/NoticeBanner.vue'
 
 const STATUS_FILTERS = [
   { value: 'pending', label: 'Pending' },
@@ -59,7 +60,7 @@ async function loadOverview() {
     if (err instanceof ApiError && err.status === 404) {
       errorMessage.value = OUTSIDE_MESSAGE
     } else {
-      errorMessage.value = err instanceof ApiError ? err.message : 'Failed to load model metrics.'
+      errorMessage.value = err.message || 'Failed to load model metrics.'
     }
   }
 }
@@ -69,7 +70,7 @@ async function loadReports() {
     const data = await get(`/engineering/feedback?status=${statusFilter.value}`)
     reports.value = data.feedback
   } catch (err) {
-    errorMessage.value = err instanceof ApiError ? err.message : 'Failed to load reports.'
+    errorMessage.value = err.message || 'Failed to load reports.'
   }
 }
 
@@ -110,9 +111,9 @@ onMounted(async () => {
       </p>
     </div>
 
-    <div v-if="errorMessage" class="bg-danger-surface border border-danger-border text-danger text-sm rounded-lg px-4 py-3">
+    <NoticeBanner v-if="errorMessage">
       {{ errorMessage }}
-    </div>
+    </NoticeBanner>
 
     <div v-else-if="loading" class="text-center text-ink-subtle py-12">Loading…</div>
 
