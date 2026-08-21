@@ -239,3 +239,59 @@ def test_the_operator_never_offers_deletion(client, seeded):
     operator = next(o for o in orgs.values() if o["type"] == "operator")
     assert operator["deletable"] is False
     assert operator["blockers"] == ["the operator organisation runs the registry"]
+
+
+def test_the_organisation_list_is_paged_and_reports_a_total(client, seeded):
+    """It was unbounded while accounts were paged. Every row asks the database what would
+    block its deletion, so an unpaged list is five counting queries per organisation."""
+    enter_panel(client)
+    for index in range(12):
+        client.post("/admin/organisations", json={"code": f"PG{index:02d}",
+                                                  "name": f"Paged {index}",
+                                                  "type": "subscriber"})
+
+    first = client.get("/admin/organisations?limit=5").json()
+    assert len(first["organisations"]) == 5
+    assert first["total"] >= 13
+    assert first["offset"] == 0
+
+    second = client.get("/admin/organisations?limit=5&offset=5").json()
+    assert len(second["organisations"]) == 5
+    assert second["total"] == first["total"]
+    seen = {o["code"] for o in first["organisations"]}
+    assert seen.isdisjoint({o["code"] for o in second["organisations"]})
+
+
+def test_organisations_can_be_searched_and_filtered(client, seeded):
+    enter_panel(client)
+    client.post("/admin/organisations", json={"code": "FIND1", "name": "Findable Bank",
+                                              "type": "financial"})
+
+    by_name = client.get("/admin/organisations", params={"q": "Findable"}).json()
+    assert [o["code"] for o in by_name["organisations"]] == ["FIND1"]
+    assert by_name["total"] == 1
+
+    by_code = client.get("/admin/organisations", params={"q": "find1"}).json()
+    assert [o["code"] for o in by_code["organisations"]] == ["FIND1"]
+
+    operators = client.get("/admin/organisations", params={"type": "operator"}).json()
+    assert operators["organisations"] and all(o["type"] == "operator"
+                                              for o in operators["organisations"])
+
+    assert client.get("/admin/organisations", params={"q": "%"}).json()["total"] < by_name["total"] + 99
+    assert client.get("/admin/organisations", params={"q": "no-such-org"}).json()["total"] == 0
+
+
+def test_a_user_row_carries_its_organisation_type(client, seeded):
+    """The panel offers only the roles an organisation can hold. It used to resolve the
+    type against the organisation list, which broke the moment that list became a page:
+    an account whose organisation was not on the current page had no type and its role
+    picker came back empty."""
+    enter_panel(client)
+    rows = client.get("/admin/users").json()["users"]
+    assert rows
+    for row in rows:
+        assert row["org_type"] in {"financial", "subscriber", "operator"}
+
+    engineer = next(r for r in rows if r["role"] == "engineer")
+    assert engineer["org_type"] == "operator"

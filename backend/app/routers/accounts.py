@@ -45,8 +45,16 @@ class ChangeRole(BaseModel):
 
 @router.get("/organisations")
 def organisations(db: Session = Depends(get_db),
-                  user: CurrentUser = Depends(require_roles("engineer"))) -> dict:
-    return {"organisations": accounts.list_organisations(db)}
+                  user: CurrentUser = Depends(require_roles("engineer")),
+                  q: Annotated[str | None, Query(max_length=80)] = None,
+                  type: Literal["financial", "subscriber", "operator"] | None = None,
+                  limit: Annotated[int, Query(ge=1, le=accounts.MAX_PAGE)] = accounts.DEFAULT_PAGE,
+                  offset: Annotated[int, Query(ge=0)] = 0) -> dict:
+    """One page of organisations. `q` matches code or display name."""
+    return {"organisations": accounts.list_organisations(db, search=q, org_type=type,
+                                                         limit=limit, offset=offset),
+            "total": accounts.count_organisations(db, search=q, org_type=type),
+            "limit": limit, "offset": offset}
 
 
 @router.post("/organisations")

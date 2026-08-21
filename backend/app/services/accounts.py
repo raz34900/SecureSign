@@ -56,6 +56,28 @@ def password_shortfalls(password: str) -> list[str]:
     return missing
 
 
+DEFAULT_PAGE = 50
+MAX_PAGE = 200
+
+
+LIKE_ESCAPE = "\\"
+
+
+def _contains(term: str) -> str:
+    """A LIKE pattern matching this text literally.
+
+    Binding the parameter stops SQL injection; it does nothing about LIKE's own
+    metacharacters. Unescaped, a search for `%` is the pattern `%%%` and matches every
+    row — a search box that quietly means "show me everything". Escaping also makes a
+    name that genuinely contains a percent sign findable.
+    """
+    escaped = (term.strip().lower()
+               .replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+               .replace("%", f"{LIKE_ESCAPE}%")
+               .replace("_", f"{LIKE_ESCAPE}_"))
+    return f"%{escaped}%"
+
+
 def _not_found() -> AppError:
     """One body for every miss. An administrator scoped to one organisation must not be
     able to learn whether an identifier belongs to another one."""
@@ -80,11 +102,37 @@ def _count(db: Session, model, *where) -> int:
     return int(db.execute(select(func.count()).select_from(model).where(*where)).scalar_one())
 
 
-def list_organisations(db: Session) -> list[dict]:
+def _organisation_filters(search: str | None, org_type: str | None):
+    conditions = []
+    if org_type:
+        conditions.append(Organisation.type == org_type)
+    if search:
+        like = _contains(search)
+        conditions.append(or_(func.lower(Organisation.code).like(like, escape=LIKE_ESCAPE),
+                              func.lower(Organisation.name).like(like, escape=LIKE_ESCAPE)))
+    return conditions
+
+
+def count_organisations(db: Session, *, search: str | None = None,
+                        org_type: str | None = None) -> int:
+    return int(db.execute(select(func.count()).select_from(Organisation)
+                          .where(*_organisation_filters(search, org_type))).scalar_one())
+
+
+def list_organisations(db: Session, *, search: str | None = None, org_type: str | None = None,
+                       limit: int = DEFAULT_PAGE, offset: int = 0) -> list[dict]:
+    """One page of organisations, filtered by code, name or type.
+
+    Paged for the same reason accounts are: each row asks the database what would block
+    its deletion, so an unpaged list is five counting queries per organisation.
+    """
     counts = dict(db.execute(select(User.org_id, func.count())
                              .where(User.is_active.is_(True))
                              .group_by(User.org_id)).all())
-    rows = db.execute(select(Organisation).order_by(Organisation.code)).scalars()
+    rows = db.execute(select(Organisation)
+                      .where(*_organisation_filters(search, org_type))
+                      .order_by(Organisation.code)
+                      .limit(limit).offset(offset)).scalars()
     out = []
     for org in rows:
         # The operator runs the registry and is never deletable, whatever it holds.
@@ -96,28 +144,6 @@ def list_organisations(db: Session) -> list[dict]:
                     "deletable": not blockers, "blockers": blockers,
                     "created_at": org.created_at.isoformat()})
     return out
-
-
-DEFAULT_PAGE = 50
-MAX_PAGE = 200
-
-
-LIKE_ESCAPE = "\\"
-
-
-def _contains(term: str) -> str:
-    """A LIKE pattern matching this text literally.
-
-    Binding the parameter stops SQL injection; it does nothing about LIKE's own
-    metacharacters. Unescaped, a search for `%` is the pattern `%%%` and matches every
-    row — a search box that quietly means "show me everything". Escaping also makes a
-    name that genuinely contains a percent sign findable.
-    """
-    escaped = (term.strip().lower()
-               .replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
-               .replace("%", f"{LIKE_ESCAPE}%")
-               .replace("_", f"{LIKE_ESCAPE}_"))
-    return f"%{escaped}%"
 
 
 def _user_filters(scope_org_id: str | None, search: str | None, role: str | None):
@@ -167,6 +193,10 @@ def list_users(db: Session, scope_org_id: str | None = None, *, search: str | No
 
     return [{"user_id": user.id, "username": user.username, "role": user.role,
              "is_active": user.is_active, "org_code": org.code, "org_name": org.name,
+             # Carried on the row rather than looked up against the organisation list:
+             # that list is now a page, so an account whose organisation is not on the
+             # current page had no type to resolve and its role picker came back empty.
+             "org_type": org.type,
              "must_change_password": user.must_change_password,
              "deletable": not blockers_for(user.id), "blockers": blockers_for(user.id),
              "created_at": user.created_at.isoformat()}
