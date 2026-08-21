@@ -15,7 +15,9 @@ log = logging.getLogger("securesign")
 # table -> column -> DDL type. Additive only, and every column must be nullable, because
 # an existing row has no value to put in it.
 ADDED_COLUMNS: dict[str, dict[str, str]] = {
-    "verifications": {"query_image_path": "VARCHAR(255)"},
+    "verifications": {"query_image_path": "VARCHAR(255)",
+                      "query_image_encrypted": "BLOB"},
+    "reference_signatures": {"image_encrypted": "BLOB"},
 }
 
 

@@ -12,7 +12,7 @@ def test_all_tables_created():
     assert tables == {
         "organisations", "users", "customers", "consent_records",
         "reference_signatures", "verifications", "audit_log",
-        "model_feedback", "sessions",
+        "model_feedback", "sessions", "customer_keys",
     }
 
 

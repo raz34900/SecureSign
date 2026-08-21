@@ -127,9 +127,12 @@ def test_the_reference_and_the_query_are_shown_at_the_same_stage(client, seeded,
         assert shown.size == query.size == (224, 224)
 
     with session_factory() as db:
+        from backend.app.repositories import customer_keys
+        from backend.app.services.verification import reference_image_bytes
+
         stored = db.query(ReferenceSignature).filter_by(
             id=references[0]["reference_id"]).one()
-        path = stored.image_path
-    with PILImage.open(path) as crop:
+        raw = reference_image_bytes(stored, customer_keys.existing_key_for(db, customer_id))
+    with PILImage.open(_io.BytesIO(raw)) as crop:
         expected = query_preview(crop.convert("L"))
     assert references[0]["image_png_base64"] == expected

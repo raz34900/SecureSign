@@ -61,12 +61,29 @@ class ConsentRecord(Base):
     method: Mapped[str] = mapped_column(String(20))  # signed_form | in_person
 
 
+class CustomerKey(Base):
+    """One data encryption key per customer, stored only wrapped.
+
+    Deleting this row is how a customer's signatures are erased: the images stay where
+    they are and become unreadable, in live storage and in every backup at once.
+    """
+    __tablename__ = "customer_keys"
+    customer_id: Mapped[str] = mapped_column(ForeignKey("customers.id"), primary_key=True)
+    wrapped_dek: Mapped[bytes] = mapped_column(LargeBinary)
+    created_at: Mapped[datetime] = mapped_column(default=_now)
+
+
 class ReferenceSignature(Base):
     __tablename__ = "reference_signatures"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     customer_id: Mapped[str] = mapped_column(ForeignKey("customers.id"))
     org_id: Mapped[str] = mapped_column(ForeignKey("organisations.id"))  # owning org
+    # Empty for anything enrolled since the images moved into the database. Kept so a
+    # row written before that still resolves, and so the backfill has something to read.
     image_path: Mapped[str] = mapped_column(String(255))
+    # The cleaned crop, encrypted under the customer's key. Nullable only for rows that
+    # predate the move; everything written now sets it.
+    image_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     embedding: Mapped[bytes] = mapped_column(LargeBinary)  # 128 float32 = 512 bytes
     created_at: Mapped[datetime] = mapped_column(default=_now)
 
@@ -87,6 +104,7 @@ class Verification(Base):
     # Nullable: rows predating this, and rows whose image has passed its retention window,
     # keep their verdict and lose only the picture.
     query_image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    query_image_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
 
 
 class AuditLog(Base):

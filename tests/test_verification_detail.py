@@ -116,17 +116,15 @@ def test_the_verdict_outlives_the_picture(client, seeded, session_factory):
     row = run_one(client, "123456663")
     with session_factory() as db:
         stored = db.get(Verification, row["request_id"])
-        path = stored.query_image_path
-        assert path and os.path.exists(path)
+        assert stored.query_image_encrypted, "the compared image is stored, encrypted"
         # Age the row past the window.
         stored.created_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=91)
         db.commit()
 
         assert service.purge_expired_query_images(db) == 1
         refreshed = db.get(Verification, row["request_id"])
-        assert refreshed.query_image_path is None
+        assert refreshed.query_image_encrypted is None, "the ciphertext is gone from the row"
         assert refreshed.decision == row["verdict"], "the verdict survives"
-    assert not os.path.exists(path), "the file is gone from disk, not just unlinked in the row"
 
     detail = client.get(f"/verifications/{row['request_id']}")
     assert detail.status_code == 200
@@ -142,18 +140,49 @@ def test_a_fresh_row_is_not_purged(client, seeded, session_factory):
         assert service.purge_expired_query_images(db) == 0
 
 
-def test_a_missing_file_does_not_break_reading_history(client, seeded, session_factory):
-    """The image is stored best-effort and may be gone — a disk wiped, a restore, a
-    purge half-done. History must still open."""
+def test_destroying_the_key_does_not_break_reading_history(client, seeded, session_factory):
+    """Erasure by destroying the customer's key. The ciphertext stays where it is and
+    stops meaning anything — in the live database and in every backup at once, which no
+    amount of deleting rows can achieve. The verdict is still readable."""
+    from backend.app.repositories import customer_keys
     from backend.app.models_db import Verification
 
     row = run_one(client, "123456665")
     with session_factory() as db:
-        os.remove(db.get(Verification, row["request_id"]).query_image_path)
+        verification = db.get(Verification, row["request_id"])
+        assert verification.query_image_encrypted
+        assert customer_keys.destroy(db, verification.customer_id) is True
+        db.commit()
 
     detail = client.get(f"/verifications/{row['request_id']}")
-    assert detail.status_code == 200
+    assert detail.status_code == 200, detail.text
     assert detail.json()["compared_png_base64"] is None
+    assert detail.json()["verdict"] == row["verdict"], "the verdict is not personal data"
+    assert detail.json()["references"] == [], "the reference images are gone too"
+
+
+def test_a_row_written_before_the_move_still_reads_from_its_file(client, seeded,
+                                                                session_factory, tmp_path):
+    """Rows that predate images moving into the database still carry a path, and must
+    keep working until the backfill has run."""
+    from backend.app.models_db import Verification
+
+    row = run_one(client, "123456668")
+    legacy = tmp_path / "legacy.png"
+    with session_factory() as db:
+        stored = db.get(Verification, row["request_id"])
+        from backend.app.services import verification as service
+        legacy.write_bytes(service.decrypt_query_image(db, stored))
+        stored.query_image_encrypted = None
+        stored.query_image_path = str(legacy)
+        db.commit()
+
+    body = client.get(f"/verifications/{row['request_id']}").json()
+    assert body["compared_png_base64"], "a legacy row still resolves"
+
+    os.remove(legacy)
+    assert client.get(f"/verifications/{row['request_id']}"
+                      ).json()["compared_png_base64"] is None, "and a lost file is not a 500"
 
 
 # --- paging ------------------------------------------------------------------
