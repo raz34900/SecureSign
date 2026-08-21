@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.auth.deps import CurrentUser, effective_roles, get_db, require_roles
 from backend.app.config import get_settings
 from backend.app.errors import AppError
+from backend.app.models_db import User
 from backend.app.repositories import audit, customers as customers_repo
 from backend.app.repositories import feedback as feedback_repo
 from backend.app.repositories import verifications as verifications_repo
@@ -22,6 +23,38 @@ NationalId = Annotated[str, StringConstraints(pattern=r"^\d{9}$")]
 class FeedbackBody(BaseModel):
     claimed_label: Literal["genuine", "forged"]
     comment: str | None = None
+
+
+Reason = Annotated[str, StringConstraints(min_length=3, max_length=500, strip_whitespace=True)]
+
+
+class OutcomeBody(BaseModel):
+    outcome: Literal["accepted", "rejected", "escalated"]
+    reason: Reason | None = None
+
+
+OUTCOME_ACTION = "verification_outcome"
+
+
+def _contradicts(verdict: str, outcome: str) -> bool:
+    """Honouring a FRAUD, or refusing a VALID.
+
+    Escalating contradicts nothing: it is the clerk declining to decide, not overruling
+    the model.
+    """
+    return ((verdict == "FRAUD" and outcome == "accepted")
+            or (verdict == "VALID" and outcome == "rejected"))
+
+
+def _outcome_view(db: Session, verification_id: str) -> dict | None:
+    entry = audit.latest(db, action=OUTCOME_ACTION, resource_id=verification_id)
+    if entry is None:
+        return None
+    actor = db.get(User, entry["user_id"]) if entry["user_id"] else None
+    return {"outcome": entry["detail"].get("outcome"),
+            "reason": entry["detail"].get("reason"),
+            "recorded_at": entry["at"].isoformat(),
+            "recorded_by": None if actor is None else actor.username}
 
 
 def _mask(national_id: str) -> str:
@@ -117,6 +150,7 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
         "retention_days": verification.QUERY_IMAGE_RETENTION_DAYS,
         "feedback": None if review is None else {
             "claimed_label": review.claimed_label, "status": review.status},
+        "outcome": _outcome_view(db, verification_id),
     }
     if "clerk" in effective_roles(user) and customer is not None:
         detail["references"] = verification.reference_views_for(db, customer.id,
@@ -136,6 +170,46 @@ def _read_query_image(path: str | None) -> str | None:
             return base64.b64encode(handle.read()).decode()
     except OSError:
         return None
+
+
+@router.post("/verifications/{verification_id}/outcome")
+def record_outcome(verification_id: str, body: OutcomeBody, db: Session = Depends(get_db),
+                   user: CurrentUser = Depends(require_roles("verifier", "clerk"))) -> dict:
+    """What the counter actually did once it had read the verdict.
+
+    Open to anyone who can run a verification, which is deliberately wider than the
+    neighbouring feedback endpoint and not an oversight. Reporting a verdict as wrong is
+    a claim about the model, and a subscriber has a standing incentive to file only one
+    direction of it. Recording an outcome is a statement about the recorder's own
+    counter: a merchant who honoured a signature the system called FRAUD is describing
+    their own exposure, and that row is evidence precisely because it is against
+    interest.
+
+    A reason is required only when the outcome disagrees with the verdict. The field
+    exists to capture what the human knew and the model did not, and demanding it on the
+    agreeing path would teach people to type "ok" and stop reading.
+
+    Recorded once, and it never touches the verification row. The verdict stays what the
+    system decided; this is what happened next.
+    """
+    record = verifications_repo.get_for_org(db, verification_id, user.org_id)
+    if record is None:
+        raise AppError("VERIFICATION_NOT_FOUND", "Verification not found.", 404)
+    if audit.latest(db, action=OUTCOME_ACTION, resource_id=verification_id) is not None:
+        raise AppError("ALREADY_RECORDED",
+                       "An outcome has already been recorded for this check.", 409)
+    if _contradicts(record.decision, body.outcome) and not body.reason:
+        raise AppError("REASON_REQUIRED",
+                       "Say why, when what you did disagrees with the verdict.", 422)
+
+    audit.write(db, user_id=user.user_id, org_id=user.org_id, action=OUTCOME_ACTION,
+                resource_type="verification", resource_id=verification_id,
+                outcome="allowed",
+                # The verdict is copied in so the log can be read on its own terms: whether
+                # the human agreed with the model is the whole point of the row.
+                detail={"outcome": body.outcome, "reason": body.reason,
+                        "verdict": record.decision})
+    return _outcome_view(db, verification_id)
 
 
 @router.post("/verifications/{verification_id}/feedback")

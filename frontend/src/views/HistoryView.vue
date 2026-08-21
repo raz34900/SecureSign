@@ -15,6 +15,12 @@ const VERDICT_FILTERS = [
 
 const PAGE_SIZE = 25
 
+const OUTCOME_LABELS = {
+  accepted: 'Honoured at the counter',
+  rejected: 'Refused at the counter',
+  escalated: 'Sent to a manager',
+}
+
 const verifications = ref([])
 const total = ref(0)
 const offset = ref(0)
@@ -322,6 +328,19 @@ onMounted(loadHistory)
                       The checked image is no longer kept. Images are held for
                       {{ detail.retention_days }} days; the result itself is permanent.
                     </p>
+
+                    <!-- What the counter did about it. Only shown when there is one:
+                         nothing is said in place of an outcome nobody recorded. -->
+                    <div v-if="detail.outcome" class="border-t border-border pt-3 text-sm">
+                      <p class="text-ink">
+                        <span class="font-medium">{{ OUTCOME_LABELS[detail.outcome.outcome] }}</span>
+                        by {{ detail.outcome.recorded_by }},
+                        {{ formatDateTime(detail.outcome.recorded_at) }}
+                      </p>
+                      <p v-if="detail.outcome.reason" class="mt-1 text-ink-muted">
+                        {{ detail.outcome.reason }}
+                      </p>
+                    </div>
                   </div>
 
                   <!-- Reporting belongs to the enrolling side: a merchant is paid either
