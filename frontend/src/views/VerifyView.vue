@@ -1,6 +1,6 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
-import { postForm, ApiError } from '../api.js'
+import { postForm, postJson, ApiError } from '../api.js'
 import { isClerk } from '../auth.js'
 import { assessCapture } from '../capture.js'
 import CaptureGuide from '../components/CaptureGuide.vue'
@@ -433,6 +433,7 @@ async function handleSubmit() {
   if (!canSubmit.value) return
   errorNotice.value = null
   result.value = null
+  clearOutcome()
   showAllAnchors.value = false
   expandedAnchorKey.value = null
   pending.value = true
@@ -450,8 +451,59 @@ async function handleSubmit() {
   }
 }
 
+/* ---------- what the counter did next ---------- */
+
+/* The evidence above exists so a person can disagree with the model. Without somewhere
+   to say what they actually did, that decision leaves no trace at all. */
+const OUTCOMES = [
+  { value: 'accepted', label: 'Honoured it' },
+  { value: 'rejected', label: 'Refused it' },
+  { value: 'escalated', label: 'Sent it to a manager' },
+]
+
+const outcomeChoice = ref('')
+const outcomeReason = ref('')
+const outcomeError = ref('')
+const outcomeSaving = ref(false)
+const outcomeRecorded = ref(null)
+
+/* Escalating is declining to decide, not overruling anyone, so it never needs a reason.
+   Mirrors _contradicts() on the server. */
+const outcomeContradicts = computed(() =>
+  (result.value?.verdict === 'FRAUD' && outcomeChoice.value === 'accepted') ||
+  (result.value?.verdict === 'VALID' && outcomeChoice.value === 'rejected'),
+)
+
+const outcomeReasonMissing = computed(
+  () => outcomeContradicts.value && !outcomeReason.value.trim(),
+)
+
+async function recordOutcome() {
+  if (outcomeSaving.value || !outcomeChoice.value || outcomeReasonMissing.value) return
+  outcomeSaving.value = true
+  outcomeError.value = ''
+  try {
+    outcomeRecorded.value = await postJson(`/verifications/${result.value.request_id}/outcome`, {
+      outcome: outcomeChoice.value,
+      reason: outcomeReason.value.trim() || null,
+    })
+  } catch (err) {
+    outcomeError.value = err.message || 'Could not record what you did.'
+  } finally {
+    outcomeSaving.value = false
+  }
+}
+
+function clearOutcome() {
+  outcomeChoice.value = ''
+  outcomeReason.value = ''
+  outcomeError.value = ''
+  outcomeRecorded.value = null
+}
+
 async function reset() {
   clearFile()
+  clearOutcome()
   errorNotice.value = null
   result.value = null
   showAllAnchors.value = false
@@ -911,6 +963,71 @@ async function reset() {
             </button>
           </div>
         </div>
+      </div>
+
+      <!-- What was done about it. Below the evidence, because the evidence is what the
+           decision is made from, and inline rather than in a dialog. -->
+      <div v-if="outcomeRecorded" class="rounded-lg border border-border bg-surface px-4 py-3 text-sm">
+        <p class="font-medium text-ink">
+          Recorded: {{ OUTCOMES.find((o) => o.value === outcomeRecorded.outcome)?.label }}
+        </p>
+        <p v-if="outcomeRecorded.reason" class="mt-1 text-ink-muted">
+          {{ outcomeRecorded.reason }}
+        </p>
+        <p class="mt-1 text-2xs text-ink-subtle">
+          This is kept alongside the result. It does not change the verdict.
+        </p>
+      </div>
+
+      <div v-else class="space-y-3 rounded-lg border border-border bg-surface px-4 py-3">
+        <p class="text-sm font-medium text-ink">What did you do?</p>
+        <p class="text-sm text-ink-muted">
+          The verdict is a measurement. Recording what happened at the counter is how the
+          system learns where it disagreed with the person who was there.
+        </p>
+
+        <div class="flex flex-wrap gap-2">
+          <label
+            v-for="option in OUTCOMES"
+            :key="option.value"
+            class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border px-3 text-sm"
+            :class="outcomeChoice === option.value
+              ? 'border-navy bg-surface font-medium text-navy'
+              : 'border-border-strong bg-surface text-ink'"
+          >
+            <input v-model="outcomeChoice" type="radio" :value="option.value" class="shrink-0" />
+            {{ option.label }}
+          </label>
+        </div>
+
+        <label v-if="outcomeChoice" class="block">
+          <span class="mb-1 block text-sm font-medium text-ink">
+            {{ outcomeContradicts ? 'Why (required)' : 'Notes (optional)' }}
+          </span>
+          <textarea
+            v-model="outcomeReason"
+            rows="2"
+            maxlength="500"
+            :placeholder="outcomeContradicts
+              ? 'What did you know that the system did not?'
+              : 'Anything worth recording'"
+            class="w-full rounded-lg border border-border-strong bg-surface px-3 py-2 text-sm text-ink"
+          ></textarea>
+          <span v-if="outcomeContradicts" class="mt-1 block text-2xs text-ink-subtle">
+            This disagrees with the verdict, so the reason is kept as part of the record.
+          </span>
+        </label>
+
+        <p v-if="outcomeError" class="text-sm text-danger">{{ outcomeError }}</p>
+
+        <button
+          type="button"
+          :disabled="!outcomeChoice || outcomeReasonMissing || outcomeSaving"
+          class="min-h-11 rounded-lg bg-navy px-4 font-semibold text-ink-inverse disabled:opacity-50"
+          @click="recordOutcome"
+        >
+          {{ outcomeSaving ? 'Recording…' : 'Record' }}
+        </button>
       </div>
 
       <!-- technical details, below the evidence -->
