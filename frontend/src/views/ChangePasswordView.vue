@@ -31,6 +31,7 @@ const checks = computed(() =>
   RULES.map((rule) => ({ ...rule, met: rule.holds(newPassword.value) })),
 )
 const allRulesMet = computed(() => checks.value.every((rule) => rule.met))
+const metCount = computed(() => checks.value.filter((rule) => rule.met).length)
 const matches = computed(
   () => confirmPassword.value.length > 0 && newPassword.value === confirmPassword.value,
 )
@@ -62,85 +63,114 @@ async function handleSubmit() {
 </script>
 
 <template>
-  <div class="max-w-md mx-auto">
-    <div class="bg-surface border border-border rounded-lg shadow-sm p-8 space-y-5">
-      <div>
-        <h1 class="text-2xl font-bold text-navy">
-          {{ mustChangePassword ? 'Choose your password' : 'Change your password' }}
-        </h1>
-        <p v-if="mustChangePassword" class="text-sm text-ink-muted mt-2">
-          Your account was created with a password someone else chose, so it is not private
-          yet. Pick your own before continuing — nothing else will open until you do.
-        </p>
-        <p v-else class="text-sm text-ink-muted mt-2">
-          Signed in as {{ state.user?.username }} at {{ state.user?.org_name }}.
-        </p>
-      </div>
+  <div class="max-w-4xl space-y-6">
+    <header>
+      <h1 class="text-xl font-semibold text-ink">
+        {{ mustChangePassword ? 'Choose your password' : 'Change your password' }}
+      </h1>
+      <p v-if="mustChangePassword" class="mt-1 max-w-prose text-sm text-ink-muted">
+        Your account was created with a password someone else chose, so it is not private
+        yet. Pick your own before continuing — nothing else will open until you do.
+      </p>
+      <p v-else class="mt-1 max-w-prose text-sm text-ink-muted">
+        Signed in as {{ state.user?.username }} at {{ state.user?.org_name }}.
+      </p>
+    </header>
 
-      <form class="space-y-4" @submit.prevent="handleSubmit">
-        <NoticeBanner v-if="errorMessage">
-          {{ errorMessage }}
-        </NoticeBanner>
+    <form class="border-t border-border pt-4" @submit.prevent="handleSubmit">
+      <NoticeBanner v-if="errorMessage" level="error" class="mb-4">
+        {{ errorMessage }}
+      </NoticeBanner>
 
-        <label class="block">
-          <span class="block text-sm font-medium text-ink-muted mb-1">Current password</span>
-          <input
-            v-model="currentPassword"
-            type="password"
-            required
-            autocomplete="current-password"
-            class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
-          />
-        </label>
+      <div class="grid gap-x-10 gap-y-6 sm:grid-cols-[minmax(0,20rem)_minmax(0,18rem)]">
+        <div class="space-y-3">
+          <label class="block">
+            <span class="block text-xs font-semibold uppercase tracking-wide text-ink-muted">Current password</span>
+            <input
+              v-model="currentPassword"
+              type="password"
+              required
+              autocomplete="current-password"
+              class="mt-1.5 w-full min-h-11 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink"
+            />
+          </label>
 
-        <label class="block">
-          <span class="block text-sm font-medium text-ink-muted mb-1">New password</span>
-          <input
-            v-model="newPassword"
-            type="password"
-            required
-            autocomplete="new-password"
-            class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
-          />
-          <ul class="mt-2 space-y-1" aria-label="Password requirements">
+          <label class="block">
+            <span class="block text-xs font-semibold uppercase tracking-wide text-ink-muted">New password</span>
+            <input
+              v-model="newPassword"
+              type="password"
+              required
+              autocomplete="new-password"
+              aria-describedby="password-requirements"
+              class="mt-1.5 w-full min-h-11 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink"
+            />
+            <p v-if="!isDifferent" class="mt-1.5 text-xs text-danger">
+              It must be different from your current password.
+            </p>
+          </label>
+
+          <label class="block">
+            <span class="block text-xs font-semibold uppercase tracking-wide text-ink-muted">Confirm new password</span>
+            <input
+              v-model="confirmPassword"
+              type="password"
+              required
+              autocomplete="new-password"
+              class="mt-1.5 w-full min-h-11 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink"
+            />
+            <p v-if="confirmPassword.length > 0 && !matches" class="mt-1.5 text-xs text-danger">
+              The two entries do not match.
+            </p>
+          </label>
+        </div>
+
+        <!-- Beside the field rather than under it: the rules are a reference the reader
+             checks while typing, not a verdict delivered afterwards. -->
+        <section id="password-requirements" class="sm:border-l sm:border-border sm:pl-8">
+          <h2 class="text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            Requirements
+            <span class="tabular ml-1 font-normal">{{ metCount }}/{{ checks.length }}</span>
+          </h2>
+          <ul class="mt-3 space-y-2">
             <li
               v-for="rule in checks"
               :key="rule.key"
-              class="flex items-center gap-2 text-xs"
-              :class="rule.met ? 'text-valid' : 'text-ink-subtle'"
+              class="flex items-center gap-2.5 text-sm"
             >
-              <span aria-hidden="true" class="w-3 shrink-0 text-center">{{ rule.met ? '✓' : '○' }}</span>
-              <span>{{ rule.label }}</span>
+              <span
+                aria-hidden="true"
+                class="h-1.5 w-1.5 shrink-0 rounded-full transition-colors"
+                :class="rule.met ? 'bg-brand-green-deep' : 'bg-border-strong'"
+              ></span>
+              <span class="tabular transition-colors" :class="rule.met ? 'text-ink' : 'text-ink-muted'">
+                {{ rule.label }}
+              </span>
               <span class="sr-only">{{ rule.met ? 'met' : 'not met' }}</span>
             </li>
           </ul>
-          <p v-if="!isDifferent" class="text-xs text-danger mt-1">
-            It must be different from your current password.
-          </p>
-        </label>
+        </section>
+      </div>
 
-        <label class="block">
-          <span class="block text-sm font-medium text-ink-muted mb-1">Confirm new password</span>
-          <input
-            v-model="confirmPassword"
-            type="password"
-            required
-            autocomplete="new-password"
-            class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
-          />
-          <p v-if="confirmPassword.length > 0 && !matches" class="text-xs text-danger mt-1">
-            The two entries do not match.
-          </p>
-        </label>
-
+      <div class="mt-6 flex items-center gap-2 border-t border-border pt-4">
         <button
           type="submit"
           :disabled="!canSubmit || pending"
-          class="w-full min-h-11 bg-navy text-ink-inverse font-semibold rounded-lg py-2 disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
+          class="min-h-11 rounded-md bg-navy px-5 text-sm font-semibold text-ink-inverse disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
         >
           {{ pending ? 'Saving…' : 'Save password' }}
         </button>
-      </form>
-    </div>
+        <!-- Only offered when there is somewhere to go back to; a handed-out password
+             leaves nothing else open. -->
+        <button
+          v-if="!mustChangePassword"
+          type="button"
+          class="min-h-11 rounded-md px-4 text-sm font-medium text-ink-muted hover:text-ink"
+          @click="router.push(roleHome())"
+        >
+          Cancel
+        </button>
+      </div>
+    </form>
   </div>
 </template>

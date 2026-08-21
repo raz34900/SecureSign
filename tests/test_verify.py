@@ -32,7 +32,7 @@ def test_verify_cross_org_returns_decision_only(client, seeded, session_factory)
     r = verify(client, "123456784", png(make_signature(seed=42)))
     assert r.status_code == 200, r.text
     body = r.json()
-    assert set(body.keys()) == {"request_id", "national_id", "verdict", "band", "distance",
+    assert set(body.keys()) == {"request_id", "national_id", "verdict", "band", "borderline_margin", "distance",
                                 "threshold", "confidence", "model_version", "verified_at",
                                 "query_preview_png_base64"}
     assert "references" not in body

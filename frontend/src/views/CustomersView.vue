@@ -2,14 +2,18 @@
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { get, del, ApiError } from '../api.js'
-import { formatDateTime , isNationalId } from '../format.js'
-
+import { formatDateTime, isNationalId, pngSrc } from '../format.js'
+import NoticeBanner from '../components/NoticeBanner.vue'
 
 const lookupId = ref('')
 const loading = ref(false)
-const notice = ref(null) // { level: 'warning' | 'error', message }
+
+/* A miss and a failure are different screens: one is an answer, the other is a fault. */
+const notFoundId = ref('')
+const errorMessage = ref('')
 
 const customer = ref(null)
+const loadedNationalId = ref('')
 const references = ref([])
 
 const confirmingId = ref(null)
@@ -23,9 +27,16 @@ const atReferenceFloor = computed(
   () => !!customer.value && customer.value.total_reference_count <= referenceFloor.value,
 )
 
-function isValidNationalId(value) {
-  return isNationalId(value)
-}
+const trimmedId = computed(() => lookupId.value.trim())
+const canSearch = computed(() => isNationalId(trimmedId.value) && !loading.value)
+const showsFormatHint = computed(
+  () => lookupId.value.length > 0 && !isNationalId(trimmedId.value),
+)
+
+// Before the first search there is nothing to report, not an empty result.
+const searched = computed(
+  () => !!customer.value || !!notFoundId.value || !!errorMessage.value,
+)
 
 function handleEscape(event) {
   if (event.key === 'Escape' && confirmingId.value !== null) {
@@ -37,27 +48,31 @@ onMounted(() => window.addEventListener('keydown', handleEscape))
 onUnmounted(() => window.removeEventListener('keydown', handleEscape))
 
 async function loadCustomer() {
-  const targetId = lookupId.value.trim()
-  if (!isValidNationalId(targetId)) return
+  const targetId = trimmedId.value
+  if (!isNationalId(targetId)) return
 
   loading.value = true
-  notice.value = null
+  notFoundId.value = ''
+  errorMessage.value = ''
   deleteNotice.value = null
   confirmingId.value = null
   customer.value = null
+  loadedNationalId.value = ''
   references.value = []
 
   try {
     const customerRes = await get(`/customers/lookup/${targetId}`)
     customer.value = customerRes
+    loadedNationalId.value = targetId
 
     const referencesRes = await get(`/customers/${customerRes.customer_id}/references`)
     references.value = referencesRes.references
   } catch (err) {
+    // A record held by another organisation answers 404 as well, and reads the same here.
     if (err instanceof ApiError && (err.code === 'CUSTOMER_NOT_FOUND' || err.status === 404)) {
-      notice.value = { level: 'warning', message: 'Customer not found.' }
+      notFoundId.value = targetId
     } else {
-      notice.value = { level: 'error', message: err.message || 'Failed to load customer.' }
+      errorMessage.value = err.message || 'Failed to load customer.'
     }
   } finally {
     loading.value = false
@@ -97,140 +112,192 @@ async function confirmDelete(referenceId) {
 </script>
 
 <template>
-  <div class="max-w-3xl mx-auto space-y-8">
-    <div>
-      <h1 class="text-2xl font-bold text-navy">Customers</h1>
-      <p class="text-sm text-ink-muted mt-1">
+  <div class="space-y-6">
+    <header>
+      <h1 class="text-xl font-semibold text-ink">Customers</h1>
+      <p class="mt-1 max-w-prose text-sm text-ink-muted">
         Look a customer up by national ID to see and manage the reference signatures your
         organisation holds for them.
       </p>
-    </div>
+    </header>
 
-    <div class="bg-surface rounded-lg shadow p-6 space-y-3">
-      <label class="block text-sm font-medium text-ink" for="lookup-national-id">National ID</label>
-      <div class="flex gap-2">
-        <input
-          id="lookup-national-id"
-          v-model="lookupId"
-          type="text"
-          inputmode="numeric"
-          maxlength="9"
-          placeholder="9-digit national ID"
-          class="flex-1 min-h-11 rounded-lg border border-border-strong px-3 py-2 bg-surface text-ink"
-          @keyup.enter="loadCustomer"
-        />
+    <form class="border-t border-border pt-4" @submit.prevent="loadCustomer">
+      <div class="flex flex-wrap items-end gap-3">
+        <div>
+          <label class="block text-xs font-semibold uppercase tracking-wide text-ink-muted" for="lookup-national-id">
+            National ID
+          </label>
+          <input
+            id="lookup-national-id"
+            v-model="lookupId"
+            type="text"
+            inputmode="numeric"
+            maxlength="9"
+            autocomplete="off"
+            placeholder="9 digits"
+            class="tabular mt-1.5 min-h-11 w-44 rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-ink placeholder:text-ink-subtle"
+          />
+        </div>
         <button
-          type="button"
-          :disabled="!isValidNationalId(lookupId.trim()) || loading"
-          class="min-h-11 bg-navy text-ink-inverse font-semibold rounded-lg px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
-          @click="loadCustomer"
+          type="submit"
+          :disabled="!canSearch"
+          class="min-h-11 rounded-md bg-navy px-5 text-sm font-semibold text-ink-inverse disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
         >
-          {{ loading ? 'Loading…' : 'Load' }}
+          {{ loading ? 'Searching…' : 'Search' }}
         </button>
       </div>
-      <p v-if="lookupId.length > 0 && !isValidNationalId(lookupId.trim())" class="text-sm text-danger">
-        National ID must be exactly 9 digits.
+      <p v-if="showsFormatHint" class="mt-2 text-xs text-danger">
+        A national ID is exactly <span class="tabular">9</span> digits.
       </p>
+    </form>
 
-      <div
-        v-if="notice"
-        :class="notice.level === 'warning'
-          ? 'border-warning-border bg-warning-surface text-warning'
-          : 'border-danger-border bg-danger-surface text-danger'"
-        class="rounded-lg border px-4 py-3 text-sm space-y-1"
+    <NoticeBanner v-if="errorMessage" level="error">
+      {{ errorMessage }}
+    </NoticeBanner>
+
+    <p v-if="loading" class="border-t border-border pt-6 text-sm text-ink-subtle">
+      Searching the registry…
+    </p>
+
+    <!-- Nothing has been asked yet: say what this screen will hold, not that it is empty. -->
+    <section
+      v-else-if="!searched"
+      class="rounded-md border border-border px-4 py-12 text-center"
+    >
+      <p class="text-sm font-medium text-ink">No customer loaded</p>
+      <p class="mx-auto mt-1.5 max-w-prose text-sm text-ink-muted">
+        Enter a national ID above. Reference signatures your organisation holds for that
+        customer appear here, at full size.
+      </p>
+    </section>
+
+    <section
+      v-else-if="notFoundId"
+      class="rounded-md border border-border px-4 py-12 text-center"
+    >
+      <p class="text-sm font-medium text-ink">
+        No customer found for <span class="tabular">{{ notFoundId }}</span>
+      </p>
+      <p class="mx-auto mt-1.5 max-w-prose text-sm text-ink-muted">
+        Check the number for a typo, or enrol this customer if they are new to the registry.
+      </p>
+      <RouterLink
+        :to="{ name: 'enrol', query: { national_id: notFoundId } }"
+        class="mt-4 inline-flex min-h-11 items-center rounded-md border border-border-strong px-4 text-sm font-semibold text-navy"
       >
-        <p>{{ notice.message }}</p>
-        <p v-if="notice.level === 'warning'" class="text-ink-muted">
-          Check the national ID, or
-          <RouterLink :to="{ name: 'enrol' }" class="underline font-medium">enrol this customer</RouterLink>
-          if they are new.
-        </p>
-      </div>
-    </div>
+        Enrol a new customer
+      </RouterLink>
+    </section>
 
-    <div v-if="loading" class="text-center text-ink-subtle py-6">Loading customer…</div>
+    <template v-else-if="customer">
+      <section class="border-t border-border pt-4">
+        <h2 class="text-lg font-semibold text-ink">{{ customer.full_name }}</h2>
+        <dl class="mt-3 flex flex-wrap gap-x-10 gap-y-3">
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wide text-ink-muted">National ID</dt>
+            <dd class="tabular mt-0.5 text-sm text-ink">{{ loadedNationalId }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wide text-ink-muted">Status</dt>
+            <dd class="mt-0.5 flex items-center gap-2 text-sm capitalize text-ink">
+              <span
+                aria-hidden="true"
+                class="h-1.5 w-1.5 shrink-0 rounded-full"
+                :class="customer.status === 'active' ? 'bg-brand-green-deep' : 'bg-ink-subtle'"
+              ></span>
+              {{ customer.status }}
+            </dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wide text-ink-muted">Enrolled</dt>
+            <dd class="tabular mt-0.5 text-sm text-ink">{{ formatDateTime(customer.created_at) }}</dd>
+          </div>
+          <div>
+            <dt class="text-xs font-semibold uppercase tracking-wide text-ink-muted">References on file</dt>
+            <dd class="mt-0.5 text-sm text-ink">
+              <span class="tabular">{{ customer.own_reference_count }}</span> yours,
+              <span class="tabular">{{ customer.total_reference_count }}</span> across all organisations
+            </dd>
+          </div>
+        </dl>
+      </section>
 
-    <div v-else-if="customer" class="bg-surface rounded-lg shadow p-6 space-y-4">
-      <div class="flex items-center justify-between gap-3">
-        <h2 class="text-lg font-semibold text-navy">{{ customer.full_name }}</h2>
-        <span class="inline-block rounded-full bg-brand-green/20 text-navy text-xs font-semibold px-3 py-1 capitalize">
-          {{ customer.status }}
-        </span>
-      </div>
-      <p class="text-sm text-ink-subtle">Created: {{ formatDateTime(customer.created_at) }}</p>
-
-      <div
-        v-if="deleteNotice"
-        :class="deleteNotice.level === 'warning'
-          ? 'border-warning-border bg-warning-surface text-warning'
-          : 'border-danger-border bg-danger-surface text-danger'"
-        class="rounded-lg border px-4 py-3 text-sm"
-      >
-        {{ deleteNotice.message }}
-      </div>
-
-      <div>
-        <div class="flex flex-wrap items-center justify-between gap-3 mb-1">
-          <h3 class="text-sm font-medium text-ink">
-            Your organisation's reference signatures ({{ references.length }})
+      <section class="border-t border-border pt-4">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h3 class="text-sm font-semibold text-ink">
+            Your reference signatures
+            <span class="tabular font-normal text-ink-muted">({{ references.length }})</span>
           </h3>
           <RouterLink
-            :to="{ name: 'enrol', query: { national_id: lookupId.trim(), full_name: customer.full_name } }"
-            class="min-h-11 inline-flex items-center rounded-lg bg-navy px-4 text-sm font-semibold text-ink-inverse"
+            :to="{ name: 'enrol', query: { national_id: loadedNationalId, full_name: customer.full_name } }"
+            class="inline-flex min-h-11 items-center rounded-md border border-border-strong px-4 text-sm font-semibold text-navy"
           >
             Add signatures
           </RouterLink>
         </div>
-        <p class="text-xs text-ink-muted mb-2">
-          {{ customer.total_reference_count }} on file across all organisations.
-          <template v-if="atReferenceFloor">
-            The registry keeps at least {{ referenceFloor }} for a customer, so deletion is disabled.
-          </template>
+
+        <NoticeBanner v-if="deleteNotice" :level="deleteNotice.level" class="mt-3">
+          {{ deleteNotice.message }}
+        </NoticeBanner>
+
+        <p v-if="references.length === 0" class="mt-4 max-w-prose text-sm text-ink-muted">
+          Your organisation holds no reference signatures for this customer. Verifications
+          still compare against the
+          <span class="tabular">{{ customer.total_reference_count }}</span> held elsewhere in
+          the registry.
         </p>
 
-        <div class="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-3">
-          <div
-            v-for="ref in references"
-            :key="ref.reference_id"
-            class="bg-surface border border-border rounded-lg p-2 flex flex-col gap-2"
+        <ul
+          v-else
+          class="mt-4 grid gap-4 grid-cols-[repeat(auto-fill,minmax(15rem,1fr))]"
+        >
+          <li
+            v-for="(reference, index) in references"
+            :key="reference.reference_id"
+            class="rounded-md border border-border bg-surface"
           >
-            <div class="relative">
-              <img :src="'data:image/png;base64,' + ref.image_png_base64" class="w-full h-auto rounded" />
+            <img
+              :src="pngSrc(reference.image_png_base64)"
+              :alt="`Reference signature ${index + 1} of ${references.length} for ${customer.full_name}`"
+              class="h-44 w-full rounded-t-md object-contain p-3"
+            />
 
+            <div
+              v-if="confirmingId === reference.reference_id"
+              class="flex items-center gap-2 border-t border-border p-2"
+            >
+              <p class="flex-1 pl-1 text-xs text-ink-muted">Delete permanently?</p>
               <button
-                v-if="confirmingId !== ref.reference_id"
                 type="button"
-                :disabled="atReferenceFloor"
-                :aria-label="`Delete reference signature for ${customer.full_name}`"
-                class="absolute -top-1 -right-1 min-w-11 min-h-11 flex items-center justify-center rounded-full bg-surface/95 border border-border text-ink-subtle hover:text-danger hover:border-danger-border disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-ink-subtle disabled:hover:border-border text-sm leading-none"
-                @click="startDelete(ref.reference_id)"
+                class="min-h-11 rounded-md bg-danger px-3 text-xs font-semibold text-ink-inverse"
+                @click="confirmDelete(reference.reference_id)"
               >
-                ✕
+                Delete
+              </button>
+              <button
+                type="button"
+                class="min-h-11 rounded-md border border-border px-3 text-xs font-semibold text-ink"
+                @click="cancelDelete"
+              >
+                Keep
               </button>
             </div>
 
-            <div v-if="confirmingId === ref.reference_id" class="flex flex-col gap-2 text-center">
-              <p class="text-2xs text-ink-muted">Delete this signature? This cannot be undone.</p>
-              <div class="flex gap-2 justify-center">
-                <button
-                  type="button"
-                  class="min-h-11 flex-1 text-xs font-semibold bg-danger text-ink-inverse rounded px-2"
-                  @click="confirmDelete(ref.reference_id)"
-                >
-                  Delete
-                </button>
-                <button
-                  type="button"
-                  class="min-h-11 flex-1 text-xs font-semibold bg-sunken text-ink rounded px-2 border border-border"
-                  @click="cancelDelete"
-                >
-                  Keep
-                </button>
-              </div>
+            <div v-else class="flex min-h-11 items-center justify-between gap-2 border-t border-border pl-3 pr-2">
+              <span class="tabular text-xs text-ink-muted">Reference {{ index + 1 }}</span>
+              <button
+                v-if="!atReferenceFloor"
+                type="button"
+                :aria-label="`Delete reference signature ${index + 1} for ${customer.full_name}`"
+                class="min-h-11 rounded-md px-3 text-xs font-medium text-ink-muted hover:text-danger"
+                @click="startDelete(reference.reference_id)"
+              >
+                Delete
+              </button>
             </div>
-          </div>
-        </div>
-      </div>
-    </div>
+          </li>
+        </ul>
+      </section>
+    </template>
   </div>
 </template>

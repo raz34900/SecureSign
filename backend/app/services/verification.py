@@ -20,7 +20,7 @@ from backend.app.repositories import verifications as verifications_repo
 from backend.app.security import envelope
 from backend.app.security.crypto import blind_index
 from signature_core.cleanup import pad_for_rotation
-from signature_core.decision import band, calculate_confidence, decide
+from signature_core.decision import BORDERLINE_MARGIN, band, calculate_confidence, decide
 from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.quality import validate_image_quality
 
@@ -267,6 +267,9 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         "band": result.band,
         "distance": round(result.distance, 4),
         "threshold": result.threshold,
+        # The width of the band, so the client can show how close "too close to call" is
+        # without keeping a second copy of the rule.
+        "borderline_margin": BORDERLINE_MARGIN,
         "confidence": round(result.confidence, 1),
         "model_version": settings.model_version,
         "verified_at": row.created_at.isoformat() + "Z",
