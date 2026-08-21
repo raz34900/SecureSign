@@ -118,47 +118,62 @@ onMounted(async () => {
     <div v-else-if="loading" class="text-center text-ink-subtle py-12">Loading…</div>
 
     <template v-else-if="overview">
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <div class="bg-surface rounded-lg shadow p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Verifications</p>
-          <p class="text-2xl font-bold text-navy">{{ overview.verifications.total }}</p>
-          <p class="text-xs text-ink-muted mt-1">{{ overview.verifications.borderline }} near the threshold</p>
+      <!-- One rail, divided, rather than four cards of the same size and shape. These are
+           readings off one system, and reading them across is the point. -->
+      <dl class="grid divide-y divide-border rounded-xl border border-border bg-surface sm:grid-cols-2 sm:divide-y-0 lg:grid-cols-4">
+        <div class="p-5 sm:border-r sm:border-border sm:last:border-r-0 lg:border-r">
+          <dt class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Verifications</dt>
+          <dd class="tabular mt-1 text-3xl font-semibold text-navy">{{ overview.verifications.total }}</dd>
+          <dd class="mt-1 text-xs text-ink-muted">
+            {{ overview.verifications.borderline }} near the threshold
+          </dd>
         </div>
-        <div class="bg-surface rounded-lg shadow p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Customers enrolled</p>
-          <p class="text-2xl font-bold text-navy">{{ overview.registry.customers }}</p>
-          <p class="text-xs text-ink-muted mt-1">{{ overview.registry.reference_signatures }} reference signatures</p>
+        <div class="p-5 lg:border-r lg:border-border">
+          <dt class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Customers enrolled</dt>
+          <dd class="tabular mt-1 text-3xl font-semibold text-navy">{{ overview.registry.customers }}</dd>
+          <dd class="mt-1 text-xs text-ink-muted">
+            {{ overview.registry.reference_signatures }} reference signatures
+          </dd>
         </div>
-        <div class="bg-surface rounded-lg shadow p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Organisations</p>
-          <p class="text-2xl font-bold text-navy">{{ overview.registry.organisations }}</p>
-          <p class="text-xs text-ink-muted mt-1">subscribing to the registry</p>
+        <div class="p-5 sm:border-r sm:border-border lg:border-r">
+          <dt class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Organisations</dt>
+          <dd class="tabular mt-1 text-3xl font-semibold text-navy">{{ overview.registry.organisations }}</dd>
+          <dd class="mt-1 text-xs text-ink-muted">subscribing to the registry</dd>
         </div>
-        <div class="bg-surface rounded-lg shadow p-4">
-          <p class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Model</p>
-          <p class="text-lg font-bold text-navy">{{ overview.model.version }}</p>
-          <p class="text-xs text-ink-muted mt-1 font-mono">threshold {{ formatDistance(overview.model.threshold) }}</p>
+        <div class="p-5">
+          <dt class="text-xs font-medium uppercase tracking-wide text-ink-subtle">Model</dt>
+          <dd class="mt-1 text-lg font-semibold text-navy">{{ overview.model.version }}</dd>
+          <dd class="tabular mt-1 text-xs text-ink-muted">
+            threshold {{ formatDistance(overview.model.threshold) }}
+          </dd>
         </div>
-      </div>
+      </dl>
 
+      <!-- The verdict split. A tinted ground and a leading marker carry the state; a thick
+           coloured edge on one side is decoration pretending to be structure. -->
       <div class="grid gap-4 sm:grid-cols-2">
         <div
           v-for="verdict in ['VALID', 'FRAUD']"
           :key="verdict"
-          class="bg-surface rounded-lg shadow p-4"
-          :class="verdict === 'VALID' ? 'border-l-4 border-valid' : 'border-l-4 border-fraud'"
+          class="rounded-xl border p-5"
+          :class="verdict === 'VALID'
+            ? 'border-valid-border bg-valid-surface'
+            : 'border-fraud-border bg-fraud-surface'"
         >
-          <p class="text-sm font-semibold" :class="verdict === 'VALID' ? 'text-valid' : 'text-fraud'">
+          <p class="flex items-center gap-2 text-sm font-semibold"
+             :class="verdict === 'VALID' ? 'text-valid' : 'text-fraud'">
+            <span class="h-2 w-2 rounded-full"
+                  :class="verdict === 'VALID' ? 'bg-valid' : 'bg-fraud'"></span>
             {{ verdict }}
           </p>
           <template v-if="verdictStat(verdict)">
-            <p class="text-2xl font-bold text-navy">{{ verdictStat(verdict).count }}</p>
-            <p class="text-xs text-ink-muted mt-1 font-mono">
+            <p class="tabular mt-1 text-3xl font-semibold text-navy">{{ verdictStat(verdict).count }}</p>
+            <p class="tabular mt-1 text-xs text-ink-muted">
               mean distance {{ formatDistance(verdictStat(verdict).mean_distance) }} ·
               mean confidence {{ formatConfidence(verdictStat(verdict).mean_confidence) }}
             </p>
           </template>
-          <p v-else class="text-sm text-ink-subtle mt-1">No verifications yet.</p>
+          <p v-else class="mt-1 text-sm text-ink-subtle">No verifications yet.</p>
         </div>
       </div>
 
@@ -169,19 +184,39 @@ onMounted(async () => {
           deciding on coin flips.
         </p>
 
-        <div class="flex items-end gap-1 h-40" role="img" aria-label="Histogram of verification distances">
-          <div v-for="bucket in overview.distance_histogram" :key="bucket.lower" class="flex-1 flex flex-col justify-end h-full">
+        <!-- The threshold is the only line on this chart that means anything, so it is drawn
+             across the plot rather than named in a caption underneath. -->
+        <div class="relative mt-4 h-44 border-b border-border-strong"
+             role="img" aria-label="Histogram of verification distances">
+          <div
+            class="absolute inset-y-0 z-10 w-px bg-fraud/60"
+            :style="{ left: `${overview.model.threshold * 100}%` }"
+          >
+            <span class="absolute -top-0.5 left-1.5 whitespace-nowrap text-2xs font-medium text-fraud">
+              threshold {{ formatDistance(overview.model.threshold) }}
+            </span>
+          </div>
+          <div class="flex h-full items-end gap-px">
             <div
-              class="w-full rounded-t"
-              :class="isThresholdBucket(bucket) ? 'bg-borderline' : 'bg-navy/70'"
-              :style="{ height: `${(bucket.count / histogramMax) * 100}%` }"
-              :title="`${bucket.lower}–${bucket.upper}: ${bucket.count}`"
-            ></div>
+              v-for="bucket in overview.distance_histogram"
+              :key="bucket.lower"
+              class="group relative flex h-full flex-1 flex-col justify-end"
+            >
+              <div
+                class="w-full rounded-t-sm transition-[height] duration-[--dur-panel] ease-[--ease-out]"
+                :class="isThresholdBucket(bucket) ? 'bg-borderline' : 'bg-navy/60'"
+                :style="{ height: bucket.count ? `${Math.max((bucket.count / histogramMax) * 100, 2)}%` : '0%' }"
+              ></div>
+              <span
+                v-if="bucket.count"
+                class="tabular pointer-events-none absolute inset-x-0 -top-4 text-center text-2xs text-ink-muted opacity-0 transition-opacity group-hover:opacity-100"
+              >{{ bucket.count }}</span>
+            </div>
           </div>
         </div>
-        <div class="flex justify-between text-2xs text-ink-subtle font-mono">
+        <div class="tabular flex justify-between text-2xs text-ink-subtle">
           <span>0.00</span>
-          <span>threshold {{ formatDistance(overview.model.threshold) }}</span>
+          <span>0.50</span>
           <span>1.00</span>
         </div>
       </div>

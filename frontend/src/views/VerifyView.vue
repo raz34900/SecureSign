@@ -728,7 +728,7 @@ async function reset() {
         :class="verdictTheme.panel"
         role="status"
         :aria-live="liveTone"
-        class="rounded-xl border-2 p-6 text-center sm:p-8"
+        class="ss-settle rounded-xl border-2 p-6 text-center sm:p-8"
       >
         <span
           :class="verdictTheme.badge"

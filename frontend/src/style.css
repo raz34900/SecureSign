@@ -52,6 +52,15 @@
      surface, which the previous brand-green ring did not. */
   --color-focus: oklch(0.52 0.18 258);
 
+  /* Motion. The built-in CSS easings are too weak to read as intentional, and ease-in
+     delays the first movement, which is the moment being watched. Nothing here runs long:
+     a clerk repeats this flow dozens of times a day and animation they wait on is a cost. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 120ms;
+  --dur-enter: 200ms;
+  --dur-panel: 260ms;
+
   /* Type scale, fixed rem. Flat below the body size where density matters, then a
      1.25 step and above so a heading reads as a heading without needing weight alone. */
   --text-2xs: 0.6875rem;
@@ -97,6 +106,41 @@ code,
 
 body {
   min-height: 100vh;
+}
+
+/* Every button confirms it was heard. 120ms is under the threshold where a press reads
+   as lag, and the scale is small enough to feel like travel rather than a bounce. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  transition: transform var(--dur-press) var(--ease-out);
+}
+
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(0.985);
+}
+
+/* Nothing in the world appears from nothing: entrances start near their resting state. */
+@keyframes ss-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes ss-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.ss-rise {
+  animation: ss-rise var(--dur-enter) var(--ease-out) both;
+}
+
+.ss-settle {
+  animation: ss-settle var(--dur-panel) var(--ease-out) both;
 }
 
 /* One focus treatment everywhere. Keyboard users get a visible ring; pointer
