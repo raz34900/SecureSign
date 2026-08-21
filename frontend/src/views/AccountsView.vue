@@ -20,7 +20,9 @@ const ROLE_ORG_TYPES = {
 
 const MIN_PASSWORD_LENGTH = 12
 
-const PAGE_SIZE = 25
+/* Both tables sit on one screen with their forms below them, so a page has to be
+   short enough that the whole panel is still readable without scrolling past it. */
+const PAGE_SIZE = 5
 
 const organisations = ref([])
 const orgTotal = ref(0)
