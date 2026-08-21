@@ -181,3 +181,47 @@ def test_org_admin_endpoints_reject_every_other_role(client, seeded):
 
 def test_org_admin_endpoints_require_auth(client, seeded):
     assert client.get("/org/users").status_code == 401
+
+
+def test_an_org_admin_sees_the_reference_breakdown_like_a_clerk(bank_admin, seeded):
+    """The senior account at a bank does the bank's work, and that includes seeing what
+    a verification was compared against.
+
+    This was gated on the bare role rather than the effective one, so an org_admin got a
+    verifier's response — a verdict with no reference set. It withheld nothing: the same
+    account can read the same images from /customers/{id}/references, which is gated on
+    the effective role. It only made the verify screen disagree with the rest of the
+    product for the one account that runs the branch.
+    """
+    from test_signature_core import make_signature
+    from test_verify import png, verify
+
+    customer_id = do_full_enrolment(bank_admin, "123456900")
+    body = verify(bank_admin, "123456900", png(make_signature())).json()
+
+    assert body["references"], "an org_admin sees what the query was compared against"
+    assert all(view["image_png_base64"] for view in body["references"])
+    assert all("distance" in view for view in body["references"])
+
+    # The claim that it withheld nothing: the same images, one endpoint away.
+    listed = bank_admin.get(f"/customers/{customer_id}/references")
+    assert listed.status_code == 200
+    assert len(listed.json()["references"]) == len(body["references"])
+
+
+def test_a_subscriber_org_admin_still_sees_no_references(client, seeded):
+    """The widening follows the organisation, not the seniority. A shop's administrator
+    is still a shop."""
+    from test_signature_core import make_signature
+    from test_verify import png, verify
+
+    login(client, "BA11", "clerk1")
+    do_full_enrolment(client, "123456901")
+    client.cookies.clear()
+
+    make_admin(client, "SB44", "boss3")
+    client.cookies.clear()
+    login(client, "SB44", "boss3", password=owner_password("boss3"))
+
+    body = verify(client, "123456901", png(make_signature())).json()
+    assert "references" not in body
