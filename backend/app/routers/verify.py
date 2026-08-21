@@ -9,7 +9,7 @@ from PIL import Image
 from pydantic import StringConstraints
 from sqlalchemy.orm import Session
 
-from backend.app.auth.deps import CurrentUser, get_db, require_roles
+from backend.app.auth.deps import CurrentUser, effective_roles, get_db, require_roles
 from backend.app.errors import AppError
 from backend.app.routers.customers import read_upload
 from backend.app.services import verification
@@ -140,4 +140,8 @@ async def verify(request: Request,
         verification.run, db, request.app.state.embedder,
         national_id=national_id, image_bytes=data,
         org_id=user.org_id, user_id=user.user_id,
-        include_references=user.role == "clerk")
+        # Effective roles, not the bare one. An org_admin at a bank enrols customers and
+        # can already read the same images from /customers/{id}/references, so hiding
+        # them here withheld nothing - it just made the verify screen disagree with the
+        # rest of the product for the one account that runs the branch.
+        include_references="clerk" in effective_roles(user))

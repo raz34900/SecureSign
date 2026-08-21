@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy.orm import Session
 
-from backend.app.auth.deps import CurrentUser, get_db, require_roles
+from backend.app.auth.deps import CurrentUser, effective_roles, get_db, require_roles
 from backend.app.config import get_settings
 from backend.app.errors import AppError
 from backend.app.repositories import audit, customers as customers_repo
@@ -91,9 +91,9 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
     Scoped to the caller's organisation and answering 404 rather than 403 for anything
     else, so the endpoint cannot be used to discover that a verification exists.
 
-    What comes back depends on the role, matching the live verify response: a clerk works
-    for the institution that holds the references and already sees them, so a clerk gets
-    the reference set back too. A verifier at a subscriber never does.
+    What comes back depends on the effective role, matching the live verify response:
+    anyone who works for the institution holding the references already sees them
+    elsewhere, so they come back here too. A subscriber never gets them.
     """
     settings = get_settings()
     record = verifications_repo.get_for_org(db, verification_id, user.org_id)
@@ -118,7 +118,7 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
         "feedback": None if review is None else {
             "claimed_label": review.claimed_label, "status": review.status},
     }
-    if user.role == "clerk" and customer is not None:
+    if "clerk" in effective_roles(user) and customer is not None:
         detail["references"] = verification.reference_views_for(db, customer.id,
                                                                record.threshold_used)
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="view_verification",
