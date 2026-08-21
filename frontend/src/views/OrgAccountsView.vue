@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { get, postJson, del, ApiError } from '../api.js'
+import { get, postJson, del } from '../api.js'
 import { formatDateTime } from '../format.js'
 import { state } from '../auth.js'
 import IssuedPassword from '../components/IssuedPassword.vue'
+import NoticeBanner from '../components/NoticeBanner.vue'
 
 
 /* Mirrors the server, which is the authority. "engineer" is absent on purpose: it
@@ -43,7 +44,7 @@ async function loadUsers() {
     users.value = body.users
     if (!form.value.role) form.value.role = availableRoles.value[0] ?? ''
   } catch (err) {
-    loadError.value = err instanceof ApiError ? err.message : 'Failed to load the team.'
+    loadError.value = err.message || 'Failed to load the team.'
   }
 }
 
@@ -129,19 +130,15 @@ onMounted(async () => {
       </p>
     </div>
 
-    <div v-if="loadError" class="bg-danger-surface border border-danger-border text-danger text-sm rounded-lg px-4 py-3">
+    <NoticeBanner v-if="loadError">
       {{ loadError }}
-    </div>
+    </NoticeBanner>
 
     <div v-else-if="loading" class="text-center text-ink-subtle py-12">Loading…</div>
 
     <template v-else>
-      <p v-if="actionError" class="rounded-lg border border-danger-border bg-danger-surface text-danger text-sm px-4 py-3">
-        {{ actionError }}
-      </p>
-      <p v-if="notice" class="rounded-lg border border-valid-border bg-valid-surface text-valid text-sm px-4 py-3">
-        {{ notice }}
-      </p>
+      <NoticeBanner v-if="actionError">{{ actionError }}</NoticeBanner>
+      <NoticeBanner v-if="notice" level="good">{{ notice }}</NoticeBanner>
 
       <IssuedPassword
         v-if="issuedPassword"

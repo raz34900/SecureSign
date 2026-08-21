@@ -1,8 +1,9 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { postJson, ApiError } from '../api.js'
+import { postJson } from '../api.js'
 import { state, load, roleHome, mustChangePassword } from '../auth.js'
+import NoticeBanner from '../components/NoticeBanner.vue'
 
 const MIN_LENGTH = 12
 
@@ -53,7 +54,7 @@ async function handleSubmit() {
     await load() // clears must_change_password, which the router guard reads
     router.push(roleHome())
   } catch (err) {
-    errorMessage.value = err instanceof ApiError ? err.message : 'Could not change the password.'
+    errorMessage.value = err.message || 'Could not change the password.'
   } finally {
     pending.value = false
   }
@@ -77,9 +78,9 @@ async function handleSubmit() {
       </div>
 
       <form class="space-y-4" @submit.prevent="handleSubmit">
-        <div v-if="errorMessage" class="rounded-lg border border-danger-border bg-danger-surface text-danger text-sm px-4 py-3">
+        <NoticeBanner v-if="errorMessage">
           {{ errorMessage }}
-        </div>
+        </NoticeBanner>
 
         <label class="block">
           <span class="block text-sm font-medium text-ink-muted mb-1">Current password</span>

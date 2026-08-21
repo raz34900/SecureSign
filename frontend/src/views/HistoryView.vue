@@ -1,9 +1,10 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
-import { get, postJson, ApiError } from '../api.js'
+import { get, postJson } from '../api.js'
 import { isClerk } from '../auth.js'
 import { formatDistance, formatConfidence, formatDateTime, decisionLabel, isNationalId, pngSrc } from '../format.js'
+import NoticeBanner from '../components/NoticeBanner.vue'
 
 const VERDICT_FILTERS = [
   { value: '', label: 'All' },
@@ -66,7 +67,7 @@ async function loadHistory({ keepPage = false } = {}) {
     verifications.value = data.verifications
     total.value = data.total ?? data.verifications.length
   } catch (err) {
-    errorMessage.value = err instanceof ApiError ? err.message : 'Failed to load history.'
+    errorMessage.value = err.message || 'Failed to load history.'
   } finally {
     loading.value = false
   }
@@ -117,7 +118,7 @@ async function toggleReport(row) {
     const body = await get(`/verifications/${opened}`)
     if (expandedId.value === opened) detail.value = body
   } catch (err) {
-    detailError.value = err instanceof ApiError ? err.message : 'Could not load this result.'
+    detailError.value = err.message || 'Could not load this result.'
   } finally {
     detailLoading.value = false
   }
@@ -217,9 +218,9 @@ onMounted(loadHistory)
       </p>
     </div>
 
-    <div v-if="errorMessage" class="bg-danger-surface border border-danger-border text-danger text-sm rounded-lg px-4 py-3">
+    <NoticeBanner v-if="errorMessage">
       {{ errorMessage }}
-    </div>
+    </NoticeBanner>
 
     <div v-else-if="loading" class="text-center text-ink-subtle py-12">Loading…</div>
 

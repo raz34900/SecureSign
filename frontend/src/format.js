@@ -1,3 +1,14 @@
+/** Level to colour, in one place. Three separate copies of this had grown up. */
+const NOTICE_CLASSES = {
+  good: 'border-valid-border bg-valid-surface text-valid',
+  warning: 'border-warning-border bg-warning-surface text-warning',
+  error: 'border-danger-border bg-danger-surface text-danger',
+}
+
+export function noticeClass(level) {
+  return NOTICE_CLASSES[level] ?? NOTICE_CLASSES.error
+}
+
 
 export function formatDistance(value) {
   return Number(value).toFixed(4)

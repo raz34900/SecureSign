@@ -3,6 +3,7 @@ import { ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { login, roleHome } from '../auth.js'
 import { ApiError } from '../api.js'
+import NoticeBanner from '../components/NoticeBanner.vue'
 
 const router = useRouter()
 
@@ -20,7 +21,7 @@ async function handleSubmit() {
     await login(orgCode.value.trim().toUpperCase(), username.value.trim(), password.value)
     router.push(roleHome())
   } catch (err) {
-    errorMessage.value = err instanceof ApiError ? err.message : 'Login failed. Please try again.'
+    errorMessage.value = err.message || 'Login failed. Please try again.'
   } finally {
     pending.value = false
   }
@@ -33,9 +34,9 @@ async function handleSubmit() {
       <h1 class="text-3xl font-bold text-navy text-center mb-6">SecureSign</h1>
 
       <form class="space-y-4" @submit.prevent="handleSubmit">
-        <div v-if="errorMessage" class="rounded-lg border border-danger-border bg-danger-surface text-danger text-sm px-4 py-3">
+        <NoticeBanner v-if="errorMessage">
           {{ errorMessage }}
-        </div>
+        </NoticeBanner>
 
         <div>
           <label for="org-code" class="block text-sm font-medium text-ink-muted mb-1">

@@ -19,7 +19,6 @@ const ROLE_ORG_TYPES = {
   engineer: ['operator'],
 }
 
-const MIN_PASSWORD_LENGTH = 12
 
 /* Both tables sit on one screen with their forms below them, so a page has to be
    short enough that the whole panel is still readable without scrolling past it. */
