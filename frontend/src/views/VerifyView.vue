@@ -16,8 +16,6 @@ import {
 
 const SCALE_MAX_DISTANCE = 1.0
 
-/* How many anchors are shown before the "show all" toggle is offered. */
-const PREVIEW_GROUP_SIZE = 3
 
 const nationalId = ref('')
 const originalFile = ref(null)
@@ -106,8 +104,7 @@ const comparedImageUrl = computed(() =>
     : previewUrl.value,
 )
 
-const showAllAnchors = ref(false)
-const expandedAnchorKey = ref(null)
+const benchKey = ref(null)
 
 /* ---------- verdict ---------- */
 
@@ -199,39 +196,15 @@ const anchorsByCloseness = computed(() =>
   [...anchors.value].sort((a, b) => a.distance - b.distance),
 )
 
-const hasHiddenAnchors = computed(
-  () => anchorsByCloseness.value.length > PREVIEW_GROUP_SIZE * 2,
+/* Whichever reference is on the bench. Defaults to the closest, which is the one the
+   verdict turned on, and falls back if the set changed under it. */
+const benchAnchor = computed(
+  () => anchorsByCloseness.value.find((a) => a.key === benchKey.value)
+    ?? anchorsByCloseness.value[0]
+    ?? null,
 )
 
-const closestAnchors = computed(() => anchorsByCloseness.value.slice(0, PREVIEW_GROUP_SIZE))
 
-const furthestAnchors = computed(() =>
-  [...anchorsByCloseness.value.slice(-PREVIEW_GROUP_SIZE)].reverse(),
-)
-
-const anchorGroups = computed(() => {
-  if (showAllAnchors.value || !hasHiddenAnchors.value) {
-    return [
-      {
-        id: 'all',
-        title: `All ${anchorsByCloseness.value.length} reference signatures, closest first`,
-        items: anchorsByCloseness.value,
-      },
-    ]
-  }
-  return [
-    {
-      id: 'closest',
-      title: `The ${closestAnchors.value.length} closest references`,
-      items: closestAnchors.value,
-    },
-    {
-      id: 'furthest',
-      title: `The ${furthestAnchors.value.length} furthest references`,
-      items: furthestAnchors.value,
-    },
-  ]
-})
 
 const ANCHOR_THEMES = {
   valid: { label: 'Match', tile: 'border-valid-border bg-valid-surface', dot: 'bg-valid' },
@@ -251,10 +224,6 @@ function anchorAlt(anchor) {
   const shared =
     anchor.count > 1 ? `, stored ${anchor.count} times as identical copies` : ''
   return `Reference signature ${anchor.position} on file for this customer${shared}. ${anchorTheme(anchor).label}, distance ${formatDistance(anchor.distance)}.`
-}
-
-function toggleAnchor(anchor) {
-  expandedAnchorKey.value = expandedAnchorKey.value === anchor.key ? null : anchor.key
 }
 
 /* ---------- file handling ---------- */
@@ -414,8 +383,6 @@ async function handleSubmit() {
   errorNotice.value = null
   result.value = null
   clearOutcome()
-  showAllAnchors.value = false
-  expandedAnchorKey.value = null
   pending.value = true
   try {
     const formData = new FormData()
@@ -486,8 +453,6 @@ async function reset() {
   clearOutcome()
   errorNotice.value = null
   result.value = null
-  showAllAnchors.value = false
-  expandedAnchorKey.value = null
   await nextTick()
   chooseFileButton.value?.focus()
 }
@@ -833,113 +798,88 @@ async function reset() {
           </p>
         </div>
 
-        <div class="grid gap-6 md:grid-cols-[minmax(0,15rem)_minmax(0,1fr)]">
-          <!-- submitted signature, stays in view while the anchors scroll -->
-          <div class="sticky top-4 z-10 self-start rounded-xl border-2 border-navy bg-surface p-3">
-            <h3 class="mb-2 text-sm font-semibold text-navy">What was compared</h3>
-            <img
-              :src="comparedImageUrl"
-              alt="The submitted signature after cleaning, which is the image compared against the references on file"
-              class="mx-auto max-h-28 w-auto rounded border border-border md:max-h-56"
-            />
-            <p class="mt-2 text-2xs leading-snug text-ink-muted">
-              This is the submitted signature after cleaning, which is what the check
-              actually ran on. If it looks cut off or unclear, photograph it again from
-              straight on in better light.
-            </p>
+        <!-- The comparison bench. Forensic practice is questioned beside known, cropped and
+             at one scale; both panes are the same size and run through the same transform,
+             so a difference on screen is a difference the model saw. -->
+        <div class="overflow-hidden rounded-xl border border-border bg-surface">
+          <div class="grid gap-px bg-border sm:grid-cols-2">
+            <figure class="bg-surface p-4">
+              <figcaption class="mb-3 flex items-baseline justify-between gap-2">
+                <span class="text-sm font-semibold text-ink">Submitted now</span>
+                <span class="text-2xs uppercase tracking-wide text-ink-subtle">Questioned</span>
+              </figcaption>
+              <img
+                :src="comparedImageUrl"
+                alt="The submitted signature after cleaning, which is the image the check ran on"
+                class="h-44 w-full rounded-md border border-border bg-surface object-contain lg:h-56"
+              />
+            </figure>
+
+            <figure class="bg-surface p-4">
+              <figcaption class="mb-3 flex items-baseline justify-between gap-2">
+                <span class="text-sm font-semibold text-ink">
+                  Reference {{ benchAnchor?.position }} on file
+                </span>
+                <span class="text-2xs uppercase tracking-wide text-ink-subtle">Known</span>
+              </figcaption>
+              <img
+                v-if="benchAnchor"
+                :src="pngSrc(benchAnchor.image)"
+                :alt="anchorAlt(benchAnchor)"
+                class="h-44 w-full rounded-md border border-border bg-surface object-contain lg:h-56"
+              />
+            </figure>
           </div>
 
-          <!-- anchors -->
-          <div class="space-y-6">
-            <div v-for="group in anchorGroups" :key="group.id">
-              <h3 class="mb-2 text-sm font-semibold text-ink">{{ group.title }}</h3>
-              <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <template v-for="anchor in group.items" :key="group.id + anchor.key">
-                  <button
-                    type="button"
-                    :aria-expanded="expandedAnchorKey === anchor.key"
-                    :class="anchorTheme(anchor).tile"
-                    class="min-h-11 rounded-lg border-2 p-2 text-left transition-colors hover:brightness-95"
-                    @click="toggleAnchor(anchor)"
-                  >
-                    <img
-                      :src="pngSrc(anchor.image)"
-                      :alt="anchorAlt(anchor)"
-                      class="h-20 w-full rounded bg-surface object-contain"
-                    />
-                    <span class="mt-2 flex items-center gap-1.5">
-                      <span :class="anchorTheme(anchor).dot" class="h-2 w-2 shrink-0 rounded-full"></span>
-                      <span class="text-xs font-semibold text-ink">{{ anchorTheme(anchor).label }}</span>
-                      <span v-if="anchor.count > 1" class="text-2xs text-ink-muted">
-                        &times;{{ anchor.count }}
-                      </span>
-                    </span>
-                    <span class="mt-0.5 block text-2xs text-ink-muted">
-                      Score {{ formatDistance(anchor.distance) }}
-                    </span>
-                  </button>
+          <div v-if="benchAnchor" class="flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-border px-4 py-3">
+            <span class="flex items-center gap-2">
+              <span :class="anchorTheme(benchAnchor).dot" class="h-2.5 w-2.5 rounded-full"></span>
+              <span class="text-sm font-semibold text-ink">{{ anchorTheme(benchAnchor).label }}</span>
+            </span>
+            <span class="tabular text-sm text-ink-muted">
+              Distance {{ formatDistance(benchAnchor.distance) }} against {{ formatDistance(result.threshold) }}
+            </span>
+            <span class="tabular text-sm text-ink-muted">
+              Confidence {{ formatConfidence(benchAnchor.confidence) }}
+            </span>
+            <span v-if="benchAnchor.count > 1" class="text-sm text-ink-muted">
+              Stored {{ benchAnchor.count }} times, so it is one signature rather than {{ benchAnchor.count }}
+            </span>
+          </div>
+        </div>
 
-                  <div
-                    v-if="expandedAnchorKey === anchor.key"
-                    class="col-span-full rounded-lg border border-border bg-sunken p-4"
-                  >
-                    <h4 class="mb-3 text-sm font-semibold text-ink">
-                      Reference {{ anchor.position }} compared with the submitted signature
-                    </h4>
-                    <div class="grid gap-4 sm:grid-cols-2">
-                      <figure>
-                        <img
-                          :src="comparedImageUrl"
-                          :alt="`The submitted signature after cleaning, shown beside reference ${anchor.position}`"
-                          class="h-40 w-full rounded border border-border bg-surface object-contain"
-                        />
-                        <figcaption class="mt-1 text-xs text-ink-muted">Submitted now</figcaption>
-                      </figure>
-                      <figure>
-                        <img
-                          :src="pngSrc(anchor.image)"
-                          :alt="anchorAlt(anchor)"
-                          class="h-40 w-full rounded border border-border bg-surface object-contain"
-                        />
-                        <figcaption class="mt-1 text-xs text-ink-muted">
-                          Reference {{ anchor.position }} on file
-                        </figcaption>
-                      </figure>
-                    </div>
-                    <div class="relative mt-4 h-3 rounded-full bg-surface" aria-hidden="true">
-                      <div
-                        class="absolute -top-1.5 -bottom-1.5 w-0.5 -translate-x-1/2 bg-ink-muted"
-                        :style="{ left: scalePercent(result.threshold) }"
-                      ></div>
-                      <div
-                        :class="anchorTheme(anchor).dot"
-                        class="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface"
-                        :style="{ left: scalePercent(anchor.distance) }"
-                      ></div>
-                    </div>
-                    <p class="mt-3 text-sm text-ink">
-                      {{ anchorTheme(anchor).label }}. Score {{ formatDistance(anchor.distance) }} against a
-                      threshold of {{ formatDistance(result.threshold) }}, confidence
-                      {{ formatConfidence(anchor.confidence) }}.
-                    </p>
-                    <p v-if="anchor.count > 1" class="mt-1 text-sm text-ink-muted">
-                      This exact image is stored {{ anchor.count }} times, so treat it as one
-                      signature, not {{ anchor.count }}.
-                    </p>
-                  </div>
-                </template>
-              </div>
-            </div>
-
+        <!-- Every reference, because the spread across them is what shows the writer's own
+             range of variation. Picking one puts it on the bench. -->
+        <div>
+          <h3 class="text-sm font-semibold text-ink">
+            All {{ anchorsByCloseness.length }} reference{{ anchorsByCloseness.length === 1 ? '' : 's' }} on
+            file, closest first
+          </h3>
+          <div class="mt-3 flex snap-x gap-3 overflow-x-auto pb-2">
             <button
-              v-if="hasHiddenAnchors"
+              v-for="anchor in anchorsByCloseness"
+              :key="anchor.key"
               type="button"
-              class="min-h-11 w-full rounded-lg border border-border-strong bg-surface px-4 py-2 text-sm font-medium text-navy transition-colors hover:bg-sunken"
-              @click="showAllAnchors = !showAllAnchors"
+              :aria-pressed="benchKey === anchor.key"
+              :class="[
+                anchorTheme(anchor).tile,
+                benchKey === anchor.key ? 'ring-2 ring-navy ring-offset-2 ring-offset-canvas' : '',
+              ]"
+              class="w-32 shrink-0 snap-start rounded-lg border p-2 text-left transition-shadow"
+              @click="benchKey = anchor.key"
             >
-              {{ showAllAnchors
-                ? 'Show only the closest and furthest references'
-                : `Show all ${anchorsByCloseness.length} references` }}
+              <img
+                :src="pngSrc(anchor.image)"
+                :alt="anchorAlt(anchor)"
+                class="h-16 w-full rounded bg-surface object-contain"
+              />
+              <span class="mt-2 flex items-center gap-1.5">
+                <span :class="anchorTheme(anchor).dot" class="h-2 w-2 shrink-0 rounded-full"></span>
+                <span class="tabular text-xs font-semibold text-ink">
+                  {{ formatDistance(anchor.distance) }}
+                </span>
+                <span v-if="anchor.count > 1" class="text-2xs text-ink-muted">&times;{{ anchor.count }}</span>
+              </span>
             </button>
           </div>
         </div>
