@@ -931,12 +931,20 @@ async function reset() {
             </dd>
           </div>
           <div class="px-5 py-3">
-            <dt class="text-2xs font-semibold uppercase tracking-wide text-ink-muted">Confidence</dt>
+            <dt class="text-2xs font-semibold uppercase tracking-wide text-ink-muted">
+              Similarity score
+            </dt>
             <dd class="tabular mt-0.5 text-sm font-semibold text-ink">
               {{ formatConfidence(result.confidence) }}
             </dd>
           </div>
         </dl>
+
+        <p class="border-t border-border px-5 py-3 text-xs text-ink-muted">
+          This model reads about eight signatures in ten correctly, and it cannot see
+          anything the photograph did not capture. It supports your judgement; it does not
+          replace it.
+        </p>
       </div>
 
       <!-- evidence -->
@@ -1003,7 +1011,9 @@ async function reset() {
                 </dd>
               </div>
               <div class="px-5 py-2.5">
-                <dt class="text-2xs font-semibold uppercase tracking-wide text-ink-muted">Confidence</dt>
+                <dt class="text-2xs font-semibold uppercase tracking-wide text-ink-muted">
+                  Similarity score
+                </dt>
                 <dd class="tabular mt-0.5 text-sm font-semibold text-ink">
                   {{ formatConfidence(benchAnchor.confidence) }}
                 </dd>

@@ -34,12 +34,16 @@ class OutcomeBody(BaseModel):
 OUTCOME_ACTION = "verification_outcome"
 
 
-def _contradicts(verdict: str, outcome: str) -> bool:
-    """Honouring a FRAUD, or refusing a VALID.
+def _contradicts(verdict: str, outcome: str, band: str) -> bool:
+    """Honouring a FRAUD, or refusing a VALID, when the model actually took a position.
 
-    Escalating contradicts nothing: it is the clerk declining to decide, not overruling
-    the model.
+    Escalating contradicts nothing: it is the clerk declining to decide. Neither does
+    anything done with a borderline result — the screen tells the clerk the model cannot
+    separate genuine from forged there, so demanding they justify "contradicting" a
+    verdict it does not really hold is asking them to argue with a coin flip.
     """
+    if band == "borderline":
+        return False
     return ((verdict == "FRAUD" and outcome == "accepted")
             or (verdict == "VALID" and outcome == "rejected"))
 
@@ -186,7 +190,8 @@ def record_outcome(verification_id: str, body: OutcomeBody, db: Session = Depend
     if audit.latest(db, action=OUTCOME_ACTION, resource_id=verification_id) is not None:
         raise AppError("ALREADY_RECORDED",
                        "An outcome has already been recorded for this check.", 409)
-    if _contradicts(record.decision, body.outcome) and not body.reason:
+    result_band = band(record.distance, record.threshold_used)
+    if _contradicts(record.decision, body.outcome, result_band) and not body.reason:
         raise AppError("REASON_REQUIRED",
                        "Say why, when what you did disagrees with the verdict.", 422)
 
