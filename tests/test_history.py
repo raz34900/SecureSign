@@ -7,7 +7,7 @@ from test_verify import png, verify
 # field appearing here that nobody chose is how a leak arrives. `has_image` is a boolean,
 # never the image itself - the picture is only served by the detail endpoint, one row at
 # a time, and each read is audited.
-FIELDS = {"request_id", "verdict", "distance", "threshold_used", "confidence",
+FIELDS = {"request_id", "verdict", "band", "distance", "threshold_used", "confidence",
           "model_version", "created_at", "customer_name", "national_id_masked",
           "performed_by", "feedback", "has_image"}
 

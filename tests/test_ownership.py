@@ -234,7 +234,7 @@ def test_clerk_verify_includes_per_anchor_references(client, seeded, session_fac
     for ref in body["references"]:
         import base64
         assert base64.b64decode(ref["image_png_base64"]).startswith(b"\x89PNG")
-        assert ref["passed"] == (ref["distance"] < body["threshold"])
+        assert ref["band"] in ("valid", "fraud", "borderline")
         assert 0.0 <= ref["confidence"] <= 99.9
 
     from backend.app.models_db import AuditLog

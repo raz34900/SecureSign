@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { get, postJson, del, ApiError } from '../api.js'
 import { formatDateTime } from '../format.js'
 import { state } from '../auth.js'
+import IssuedPassword from '../components/IssuedPassword.vue'
 
 
 /* Mirrors the server, which is the authority. "engineer" is absent on purpose: it
@@ -80,7 +81,7 @@ async function submitReset(row) {
     notice.value = ''
     issuedPassword.value = { username: row.username, password: result.initial_password }
     resettingId.value = ''
-      await loadUsers()
+    await loadUsers()
   } catch (err) {
     actionError.value = err.message || 'Failed to reset the password.'
   }
@@ -141,6 +142,13 @@ onMounted(async () => {
       <p v-if="notice" class="rounded-lg border border-valid-border bg-valid-surface text-valid text-sm px-4 py-3">
         {{ notice }}
       </p>
+
+      <IssuedPassword
+        v-if="issuedPassword"
+        :username="issuedPassword.username"
+        :password="issuedPassword.password"
+        @done="issuedPassword = null"
+      />
 
       <div class="bg-surface rounded-lg shadow divide-y divide-border">
         <div v-for="row in users" :key="row.user_id" class="p-4 space-y-3">

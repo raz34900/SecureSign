@@ -1,6 +1,4 @@
 
-export const BORDERLINE_MARGIN = 0.05
-
 export function formatDistance(value) {
   return Number(value).toFixed(4)
 }
@@ -24,18 +22,15 @@ export function formatDateTime(value) {
   })
 }
 
-/**
- * Three outcomes, not two. A distance sitting within BORDERLINE_MARGIN of the
- * threshold is a coin flip from an 84%-accurate model, and the interface has to
- * say so rather than painting it solid green or solid red.
- */
-export function classifyDecision(distance, threshold) {
-  const gap = Math.abs(Number(distance) - Number(threshold))
-  if (gap < BORDERLINE_MARGIN) return 'borderline'
-  return Number(distance) < Number(threshold) ? 'valid' : 'fraud'
+/** The server decides the band; this only names it. */
+export function decisionLabel(band, verdict) {
+  return band === 'borderline' ? 'BORDERLINE' : verdict
 }
 
-export function decisionLabel(kind, verdict) {
-  if (kind === 'borderline') return 'BORDERLINE'
-  return verdict
+export function isNationalId(value) {
+  return /^\d{9}$/.test(String(value ?? '').trim())
+}
+
+export function pngSrc(base64) {
+  return `data:image/png;base64,${base64}`
 }

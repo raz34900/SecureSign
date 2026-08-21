@@ -3,9 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
 import { get, postJson, ApiError } from '../api.js'
 import { isClerk } from '../auth.js'
-import { formatDistance, formatConfidence, formatDateTime, classifyDecision, decisionLabel } from '../format.js'
-
-const FALLBACK_THRESHOLD = 0.3999
+import { formatDistance, formatConfidence, formatDateTime, decisionLabel, isNationalId, pngSrc } from '../format.js'
 
 const VERDICT_FILTERS = [
   { value: '', label: 'All' },
@@ -40,12 +38,10 @@ const reportError = ref('')
 const reportSubmitting = ref(false)
 
 const nationalIdValid = computed(
-  () => nationalIdFilter.value === '' || /^\d{9}$/.test(nationalIdFilter.value.trim()),
+  () => nationalIdFilter.value === '' || isNationalId(nationalIdFilter.value),
 )
 
-function verdictKind(row) {
-  return classifyDecision(row.distance, row.threshold_used ?? FALLBACK_THRESHOLD)
-}
+
 
 const verdictClasses = {
   valid: 'bg-valid-surface text-valid border border-valid-border',
@@ -265,8 +261,8 @@ onMounted(loadHistory)
                 <code class="block text-xs text-ink-subtle">{{ v.national_id_masked }}</code>
               </td>
               <td class="px-4 py-3">
-                <span :class="['inline-block rounded-full px-3 py-1 text-xs font-bold', verdictClasses[verdictKind(v)]]">
-                  {{ decisionLabel(verdictKind(v), v.verdict) }}
+                <span :class="['inline-block rounded-full px-3 py-1 text-xs font-bold', verdictClasses[v.band]]">
+                  {{ decisionLabel(v.band, v.verdict) }}
                 </span>
               </td>
               <td class="px-4 py-3">{{ formatConfidence(v.confidence) }}</td>
@@ -299,7 +295,7 @@ onMounted(loadHistory)
                     <div v-if="detail.compared_png_base64" class="flex flex-wrap items-start gap-4">
                       <figure class="shrink-0">
                         <img
-                          :src="'data:image/png;base64,' + detail.compared_png_base64"
+                          :src="pngSrc(detail.compared_png_base64)"
                           alt="The signature that was checked, as the model read it"
                           class="h-32 w-32 rounded border border-border bg-surface"
                         />
@@ -317,7 +313,7 @@ onMounted(loadHistory)
                           <img
                             v-for="reference in detail.references"
                             :key="reference.reference_id"
-                            :src="'data:image/png;base64,' + reference.image_png_base64"
+                            :src="pngSrc(reference.image_png_base64)"
                             alt="A reference signature on file"
                             class="h-20 w-20 rounded border border-border bg-surface"
                           />
