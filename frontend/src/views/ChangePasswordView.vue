@@ -6,6 +6,18 @@ import { state, load, roleHome, mustChangePassword } from '../auth.js'
 
 const MIN_LENGTH = 12
 
+/* Mirrors PASSWORD_RULES in backend/app/services/accounts.py, which is the authority and
+   re-checks every one of these. Kept here so the reader sees a rule turn green as they
+   type rather than being told what was wrong after submitting. A test fails if the two
+   lists drift apart. */
+const RULES = [
+  { key: 'length', label: `At least ${MIN_LENGTH} characters`, holds: (t) => t.length >= MIN_LENGTH },
+  { key: 'uppercase', label: 'An upper-case letter', holds: (t) => /[A-Z]/.test(t) },
+  { key: 'lowercase', label: 'A lower-case letter', holds: (t) => /[a-z]/.test(t) },
+  { key: 'digit', label: 'A number', holds: (t) => /[0-9]/.test(t) },
+  { key: 'symbol', label: 'A symbol', holds: (t) => /[^A-Za-z0-9]/.test(t) },
+]
+
 const router = useRouter()
 
 const currentPassword = ref('')
@@ -14,7 +26,10 @@ const confirmPassword = ref('')
 const errorMessage = ref('')
 const pending = ref(false)
 
-const longEnough = computed(() => newPassword.value.length >= MIN_LENGTH)
+const checks = computed(() =>
+  RULES.map((rule) => ({ ...rule, met: rule.holds(newPassword.value) })),
+)
+const allRulesMet = computed(() => checks.value.every((rule) => rule.met))
 const matches = computed(
   () => confirmPassword.value.length > 0 && newPassword.value === confirmPassword.value,
 )
@@ -22,7 +37,8 @@ const isDifferent = computed(
   () => newPassword.value.length === 0 || newPassword.value !== currentPassword.value,
 )
 const canSubmit = computed(
-  () => currentPassword.value.length > 0 && longEnough.value && matches.value && isDifferent.value,
+  () => currentPassword.value.length > 0 && allRulesMet.value && matches.value
+    && isDifferent.value,
 )
 
 async function handleSubmit() {
@@ -85,9 +101,18 @@ async function handleSubmit() {
             autocomplete="new-password"
             class="w-full min-h-11 rounded-lg border border-border bg-surface text-ink px-3 py-2"
           />
-          <p class="text-xs mt-1" :class="longEnough ? 'text-valid' : 'text-ink-subtle'">
-            At least {{ MIN_LENGTH }} characters.
-          </p>
+          <ul class="mt-2 space-y-1" aria-label="Password requirements">
+            <li
+              v-for="rule in checks"
+              :key="rule.key"
+              class="flex items-center gap-2 text-xs"
+              :class="rule.met ? 'text-valid' : 'text-ink-subtle'"
+            >
+              <span aria-hidden="true" class="w-3 shrink-0 text-center">{{ rule.met ? '✓' : '○' }}</span>
+              <span>{{ rule.label }}</span>
+              <span class="sr-only">{{ rule.met ? 'met' : 'not met' }}</span>
+            </li>
+          </ul>
           <p v-if="!isDifferent" class="text-xs text-danger mt-1">
             It must be different from your current password.
           </p>

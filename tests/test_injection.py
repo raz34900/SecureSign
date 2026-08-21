@@ -10,6 +10,7 @@ unescaped search term can match far more than it appears to ask for.
 """
 from conftest import login
 from test_engineering import enter_panel
+from test_org_admin import owner_password
 
 STRONG = "correct-horse-battery"
 
@@ -109,5 +110,5 @@ def test_an_injected_name_survives_a_round_trip_through_the_org_admin_panel(clie
 
     make_admin(client, "BA11", "boss1")
     client.cookies.clear()
-    login(client, "BA11", "boss1", password=f"{STRONG}-boss1")
+    login(client, "BA11", "boss1", password=owner_password("boss1"))
     assert client.get("/org/users").json()["organisation"]["name"] == "Bank' OR 1=1 --"

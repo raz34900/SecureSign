@@ -32,6 +32,29 @@ ROLE_ORG_TYPES = {
 
 MIN_PASSWORD_LENGTH = 12
 
+# Composition rules for a password its owner chooses. Applied here and nowhere else: a
+# generated handover password is not chosen by anyone and is judged on entropy instead.
+#
+# Worth knowing what these do and do not buy. NIST 800-63B advises against composition
+# rules precisely because they herd people to `Password1!` — the four classes are
+# satisfied and the result is among the first guesses anyone would make. They are kept
+# because they are what an examiner expects to see, and the length floor is what is
+# actually carrying the weight.
+PASSWORD_RULES = (
+    ("uppercase", "an upper-case letter", lambda text: any(c.isupper() for c in text)),
+    ("lowercase", "a lower-case letter", lambda text: any(c.islower() for c in text)),
+    ("digit", "a number", lambda text: any(c.isdigit() for c in text)),
+    ("symbol", "a symbol", lambda text: any(not c.isalnum() for c in text)),
+)
+
+
+def password_shortfalls(password: str) -> list[str]:
+    """Which rules this password fails, named the way a person would say them."""
+    missing = [] if len(password) >= MIN_PASSWORD_LENGTH else [
+        f"at least {MIN_PASSWORD_LENGTH} characters"]
+    missing += [label for _, label, holds in PASSWORD_RULES if not holds(password)]
+    return missing
+
 
 def _not_found() -> AppError:
     """One body for every miss. An administrator scoped to one organisation must not be
@@ -294,9 +317,10 @@ def change_own_password(db: Session, *, user_id: str, current_password: str,
         raise _not_found()
     if not verify_password(user.password_hash, current_password):
         raise AppError("AUTH_INVALID", "The current password is not correct.", 401)
-    if len(new_password) < MIN_PASSWORD_LENGTH:
+    missing = password_shortfalls(new_password)
+    if missing:
         raise AppError("WEAK_PASSWORD",
-                       f"The password must be at least {MIN_PASSWORD_LENGTH} characters.", 422)
+                       f"The password still needs {', and '.join(missing)}.", 422)
     if verify_password(user.password_hash, new_password):
         raise AppError("PASSWORD_UNCHANGED",
                        "The new password must be different from the current one.", 422)
