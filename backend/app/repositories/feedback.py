@@ -18,7 +18,7 @@ def for_verification(db: Session, verification_id: str) -> ModelFeedback | None:
         ModelFeedback.verification_id == verification_id)).scalars().first()
 
 
-def list_with_context(db: Session, *, status: str | None = None, source: str | None = None,
+def list_with_context(db: Session, *, status: str | None = None,
                       limit: int = 200) -> list[tuple]:
     """(report, verification, reporting organisation) - never the customer behind it."""
     stmt = (select(ModelFeedback, Verification, Organisation)
@@ -29,8 +29,6 @@ def list_with_context(db: Session, *, status: str | None = None, source: str | N
             .limit(limit))
     if status:
         stmt = stmt.where(ModelFeedback.status == status)
-    if source:
-        stmt = stmt.where(ModelFeedback.source == source)
     return list(db.execute(stmt).all())
 
 
@@ -48,7 +46,6 @@ def counts_by_org(db: Session) -> dict[str, dict[str, int]]:
     """
     rows = db.execute(select(User.org_id, ModelFeedback.status, func.count())
                       .join(User, User.id == ModelFeedback.submitted_by)
-                      .where(ModelFeedback.source == "institution")
                       .group_by(User.org_id, ModelFeedback.status)).all()
     tally: dict[str, dict[str, int]] = {}
     for org_id, status, count in rows:

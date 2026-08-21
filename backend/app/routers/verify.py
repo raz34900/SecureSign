@@ -14,10 +14,9 @@ from backend.app.errors import AppError
 from backend.app.routers.customers import read_upload
 from backend.app.services import verification
 from backend.app.services.verification import query_preview
-from signature_core.anchors import extract_vertical_anchors
-from signature_core.cleanup import flatten_image_bytes, isolate_signature_ink
-from signature_core.quality import (looks_like_signature, region_is_clipped,
-                                    validate_image_quality)
+from signature_core.cleanup import (candidate_crops, flatten_image_bytes,
+                                    isolate_signature_ink)
+from signature_core.quality import region_is_clipped, validate_image_quality
 
 router = APIRouter(tags=["verify"])
 
@@ -50,11 +49,9 @@ def _thumbnail(img: Image.Image) -> Image.Image:
     resizes and interpolation changes stroke weight. The full-resolution region is what
     goes to /verify; this is only what the clerk looks at.
     """
-    if max(img.size) <= PREVIEW_EDGE:
-        return img
-    scale = PREVIEW_EDGE / max(img.size)
-    return img.resize((max(1, round(img.width * scale)), max(1, round(img.height * scale))),
-                      Image.LANCZOS)
+    small = img.copy()
+    small.thumbnail((PREVIEW_EDGE, PREVIEW_EDGE), Image.LANCZOS)
+    return small
 
 
 def _png_base64(img: Image.Image) -> str:
@@ -75,20 +72,14 @@ def _whole_image_preview(image_bytes: bytes) -> str:
 
 
 def _extract_regions(image_bytes: bytes) -> list[dict]:
-    # Flatten first: extraction thresholds globally and cannot see past a shadow.
-    image_bytes = flatten_image_bytes(image_bytes)
-    candidates = []
-    for crop in extract_vertical_anchors(image_bytes):
-        cleaned = isolate_signature_ink(crop)
-        if not looks_like_signature(np.asarray(cleaned.convert("L"))):
-            continue  # page edge, shadow band, registration mark - not offered as a choice
-        candidates.append((_ink_fraction(cleaned), cleaned))
+    candidates = [(_ink_fraction(crop), crop) for crop in candidate_crops(image_bytes)]
 
     if not candidates:
         # A tight close-up has no distinct sub-region to offer. Return the whole frame
         # prepared the same way, so the caller never submits an unprepared image: a
         # reference and a query that were prepared differently are not comparable.
-        whole = isolate_signature_ink(Image.open(io.BytesIO(image_bytes)).convert("L"))
+        whole = isolate_signature_ink(
+            Image.open(io.BytesIO(flatten_image_bytes(image_bytes))).convert("L"))
         candidates.append((_ink_fraction(whole), whole))
 
     candidates.sort(key=lambda item: item[0])

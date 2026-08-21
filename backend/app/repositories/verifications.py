@@ -1,4 +1,4 @@
-from sqlalchemy import func, select
+from sqlalchemy import Integer, func, select
 from sqlalchemy.orm import Session
 
 from backend.app.models_db import Customer, ModelFeedback, User, Verification
@@ -73,7 +73,18 @@ def distance_stats(db: Session) -> list[tuple[str, float, float]]:
                func.avg(Verification.confidence)).group_by(Verification.decision)).all()]
 
 
-def all_distances(db: Session, limit: int = 5000) -> list[float]:
-    return [float(d) for d in db.execute(
-        select(Verification.distance).order_by(Verification.created_at.desc())
-        .limit(limit)).scalars()]
+def distance_buckets(db: Session, width: float, count: int) -> dict[int, int]:
+    """How many verifications fall in each fixed-width distance bucket.
+
+    Counted in the database over every row. An earlier version pulled the newest 5000
+    distances and bucketed them in Python, so past 5000 verifications the histogram
+    quietly stopped being the whole picture with nothing on screen saying so.
+    """
+    index = func.min(func.cast(Verification.distance / width, Integer), count - 1)
+    rows = db.execute(select(index, func.count()).group_by(index)).all()
+    return {int(bucket): int(total) for bucket, total in rows}
+
+
+def borderline_count(db: Session, threshold: float, margin: float) -> int:
+    return int(db.execute(select(func.count()).select_from(Verification).where(
+        func.abs(Verification.distance - threshold) < margin)).scalar_one())
