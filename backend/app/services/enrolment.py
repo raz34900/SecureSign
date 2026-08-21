@@ -5,6 +5,7 @@ Two modes: a national id nobody holds yet enrols a new customer; a national id a
 on file appends references owned by the caller's org, but only after every submitted
 signature is verified against the customer's existing references (anti-impersonation)."""
 import base64
+import hashlib
 import io
 import os
 import time
@@ -50,10 +51,27 @@ class _Staged:
     user_id: str
     target_customer_id: str | None = None  # set => append mode
     crops: dict[str, Image.Image] = field(default_factory=dict)
+    digests: set[str] = field(default_factory=set)
     created_at: float = field(default_factory=time.time)
 
 
 _store: dict[str, _Staged] = {}
+
+
+def _digest(crop: Image.Image) -> str:
+    buf = io.BytesIO()
+    crop.save(buf, format="PNG")
+    return hashlib.sha256(buf.getvalue()).hexdigest()
+
+
+def _crop_views(staged: _Staged) -> list[dict]:
+    out = []
+    for crop_id, crop in staged.crops.items():
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")
+        out.append({"crop_id": crop_id,
+                    "preview_png_base64": base64.b64encode(buf.getvalue()).decode()})
+    return out
 
 
 def _purge() -> None:
@@ -122,28 +140,61 @@ def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict
                        "signatures, which is as many as it keeps. Approve the ones you "
                        "want or start again.", 422)
 
-    for crop in crops[:room]:
-        staged.crops[str(uuid.uuid4())] = crop
+    # The same photograph attached twice yields byte-identical crops, because everything
+    # between the upload and here is deterministic. Storing them would put one signature
+    # on file several times, and the verification evidence view would then show one
+    # signature agreeing with itself as though several references had agreed.
+    # Compared against what earlier photographs left, not against the rest of this one.
+    # Two signatures on one card are never byte-identical - if they came out that way
+    # the extraction handed back the same region twice, and that is a bug to find rather
+    # than a specimen to drop mid-card.
+    collected = set(staged.digests)
+    fresh = []
+    for crop in crops:
+        digest = _digest(crop)
+        if digest in collected:
+            continue
+        staged.digests.add(digest)
+        fresh.append(crop)
 
-    out = []
-    for crop_id, crop in staged.crops.items():
-        buf = io.BytesIO()
-        crop.save(buf, format="PNG")
-        out.append({"crop_id": crop_id,
-                    "preview_png_base64": base64.b64encode(buf.getvalue()).decode()})
-    return out
+    if not fresh:
+        raise AppError("DUPLICATE_SIGNATURES",
+                       "Every signature in this photograph is already collected. Take a "
+                       "photograph of a different part of the card, or approve what is "
+                       "already there.", 422)
+
+    for crop in fresh[:room]:
+        staged.crops[str(uuid.uuid4())] = crop
+    return _crop_views(staged)
+
+
+def staged_crops(enrolment_id: str, org_id: str) -> list[dict]:
+    """What is staged right now, without attaching anything.
+
+    The client holds the candidate images only in memory, so a refresh loses them while
+    the staging entry behind them is still alive for its full fifteen minutes. This is
+    how the wizard picks them back up instead of making the clerk rephotograph a card
+    the server still has.
+    """
+    return _crop_views(_get(enrolment_id, org_id))
 
 
 def approve(db: Session, embedder, enrolment_id: str, crop_ids: list[str],
-            samples_dir: str, org_id: str) -> Customer:
+            samples_dir: str, org_id: str) -> tuple[Customer, int]:
+    """Returns the customer and how many references were actually stored.
+
+    The count is not len(crop_ids). The same crop asked for twice is one signature, and
+    counting the request rather than the result told the clerk they had eight references
+    when the customer held fewer - which is the floor the whole enrolment is built on.
+    """
     staged = _get(enrolment_id, org_id)
-    selected = [staged.crops[c] for c in crop_ids if c in staged.crops]
+    selected = [staged.crops[c] for c in dict.fromkeys(crop_ids) if c in staged.crops]
     if staged.target_customer_id is None:
         customer = _approve_new(db, embedder, staged, selected, samples_dir)
     else:
         customer = _approve_append(db, embedder, staged, selected, samples_dir)
     del _store[enrolment_id]
-    return customer
+    return customer, len(selected)
 
 
 def _store_crops(db: Session, embedder, customer_id: str, org_id: str, samples_dir: str,

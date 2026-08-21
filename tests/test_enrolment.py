@@ -145,7 +145,7 @@ def test_photographs_accumulate_instead_of_replacing(client, seeded):
     assert len(first.json()["crops"]) == 4
 
     second = client.post(f"/customers/{enrolment_id}/card",
-                         files={"file": ("b.jpg", make_specimen_card(5), "image/jpeg")})
+                         files={"file": ("b.jpg", make_specimen_card(5, variant=1), "image/jpeg")})
     assert second.status_code == 200, second.text
     crops = second.json()["crops"]
     assert len(crops) == 9, "the second photograph replaced the first instead of adding"
@@ -163,7 +163,7 @@ def test_a_short_photograph_is_no_longer_a_dead_end(client, seeded):
                        files={"file": ("a.jpg", make_specimen_card(4), "image/jpeg")}
                        ).status_code == 200
     crops = client.post(f"/customers/{enrolment_id}/card",
-                        files={"file": ("b.jpg", make_specimen_card(4), "image/jpeg")}
+                        files={"file": ("b.jpg", make_specimen_card(4, variant=1), "image/jpeg")}
                         ).json()["crops"]
     assert len(crops) == 8
 
@@ -186,7 +186,7 @@ def test_a_photograph_with_no_signature_keeps_what_was_collected(client, seeded)
     assert rejected.status_code == 422
 
     kept = client.post(f"/customers/{enrolment_id}/card",
-                       files={"file": ("c.jpg", make_specimen_card(1), "image/jpeg")})
+                       files={"file": ("c.jpg", make_specimen_card(1, variant=1), "image/jpeg")})
     assert len(kept.json()["crops"]) == 10, "the failed photograph discarded the good ones"
 
 
@@ -196,9 +196,10 @@ def test_staged_crops_are_bounded(client, seeded):
 
     login(client, "BA11", "clerk1")
     enrolment_id = client.post("/customers", json=enrol_body("123456703")).json()["enrolment_id"]
-    for _ in range(6):
+    for attempt in range(6):
         response = client.post(f"/customers/{enrolment_id}/card",
-                               files={"file": ("c.jpg", make_specimen_card(10), "image/jpeg")})
+                               files={"file": ("c.jpg", make_specimen_card(10, variant=attempt),
+                                               "image/jpeg")})
         if response.status_code != 200:
             assert response.json()["error"]["code"] == "TOO_MANY_SIGNATURES"
             break

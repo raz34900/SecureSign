@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { postJson, postForm, ApiError } from '../api.js'
+import { get, postJson, postForm, ApiError } from '../api.js'
 import { assessCapture } from '../capture.js'
+import { save as saveWizard, load as loadWizard, clear as clearWizard } from '../enrolStorage.js'
 import CaptureGuide from '../components/CaptureGuide.vue'
 
 /** Most references a customer may hold. */
@@ -145,7 +146,7 @@ async function uploadCard() {
     absorbCrops(res.crops)
     step.value = 3
   } catch (err) {
-    if (err instanceof ApiError && err.code === 'INSUFFICIENT_SIGNATURES') {
+    if (err instanceof ApiError && ['INSUFFICIENT_SIGNATURES', 'DUPLICATE_SIGNATURES'].includes(err.code)) {
       step2Error.value = { level: 'warning', message: err.message || 'No signature was detected. Please rephotograph the card.' }
     } else if (err instanceof ApiError && err.code === 'CUSTOMER_NOT_FOUND') {
       expireAndRestart()
@@ -202,6 +203,7 @@ async function approveReferences() {
     successReferenceCount.value = res.reference_count
     successMode.value = enrolMode.value
     step.value = 'success'
+    forget()
   } catch (err) {
     if (err instanceof ApiError && err.code === 'CUSTOMER_NOT_FOUND') {
       expireAndRestart()
@@ -237,8 +239,69 @@ async function copyCustomerId() {
   }
 }
 
+// --- Surviving a refresh ---
+
+/* Only the identifiers and what the clerk typed. The candidate images are re-fetched
+   from the staged enrolment, which the server keeps for fifteen minutes. */
+function persist() {
+  if (step.value === 'success') return
+  saveWizard(sessionStorage, {
+    step: step.value,
+    nationalId: nationalId.value,
+    fullName: fullName.value,
+    consentGranted: consentGranted.value,
+    consentMethod: consentMethod.value,
+    enrolmentId: enrolmentId.value,
+    enrolMode: enrolMode.value,
+    /* Which specimens were ticked, by id. Restoring without this would silently re-tick
+       specimens the clerk had deliberately rejected. */
+    deselected: crops.value.filter((c) => !c.selected).map((c) => c.crop_id),
+  })
+}
+
+function forget() {
+  clearWizard(sessionStorage)
+}
+
+async function restore() {
+  const saved = loadWizard(sessionStorage)
+  if (!saved) return false
+
+  nationalId.value = saved.nationalId
+  fullName.value = saved.fullName
+  consentGranted.value = saved.consentGranted
+  consentMethod.value = saved.consentMethod
+
+  if (!saved.enrolmentId) return true
+
+  enrolmentId.value = saved.enrolmentId
+  enrolMode.value = saved.enrolMode
+  try {
+    const { crops: staged } = await get(`/customers/${saved.enrolmentId}/card`)
+    absorbCrops(staged)
+    const rejected = new Set(saved.deselected)
+    crops.value.forEach((crop) => { crop.selected = !rejected.has(crop.crop_id) })
+    /* Back to step 3 only if there is something there to approve. The card upload is
+       the one thing that cannot be restored - the file itself never left the browser. */
+    step.value = staged.length ? saved.step : 2
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 404) {
+      expireAndRestart()
+    } else {
+      enrolmentId.value = null
+      enrolMode.value = null
+      step.value = 1
+    }
+  }
+  return true
+}
+
+watch([step, nationalId, fullName, consentGranted, consentMethod, enrolmentId, enrolMode, crops],
+      persist, { deep: true })
+
 /* Arriving from a customer's page: the identity is already known, so skip retyping it. */
-onMounted(() => {
+onMounted(async () => {
+  if (await restore()) return
   const prefillId = String(route.query.national_id ?? '')
   if (/^\d{9}$/.test(prefillId)) {
     nationalId.value = prefillId
@@ -289,6 +352,7 @@ function expireAndRestart() {
 }
 
 function resetWizard() {
+  forget()
   expiredMessage.value = ''
   step.value = 1
   nationalId.value = ''
