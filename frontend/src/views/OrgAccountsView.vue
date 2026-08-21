@@ -4,7 +4,6 @@ import { get, postJson, del, ApiError } from '../api.js'
 import { formatDateTime } from '../format.js'
 import { state } from '../auth.js'
 
-const MIN_PASSWORD_LENGTH = 12
 
 /* Mirrors the server, which is the authority. "engineer" is absent on purpose: it
    belongs to the operator, and no institution can create one. */
@@ -20,11 +19,12 @@ const loadError = ref('')
 const actionError = ref('')
 const notice = ref('')
 
-const form = ref({ username: '', role: '', password: '' })
+const form = ref({ username: '', role: '' })
+/* Shown once, after creation or a reset. Nobody can look it up again. */
+const issuedPassword = ref(null)
 const saving = ref(false)
 
 const resettingId = ref('')
-const resetPassword = ref('')
 const confirmingDeleteId = ref('')
 
 const availableRoles = computed(() => ROLES_BY_ORG_TYPE[organisation.value?.type] ?? [])
@@ -32,7 +32,7 @@ const availableRoles = computed(() => ROLES_BY_ORG_TYPE[organisation.value?.type
 const formValid = computed(
   () => /^[a-z0-9][a-z0-9._-]{2,79}$/.test(form.value.username.trim())
     && availableRoles.value.includes(form.value.role)
-    && form.value.password.length >= MIN_PASSWORD_LENGTH,
+,
 )
 
 async function loadUsers() {
@@ -55,10 +55,10 @@ async function addUser() {
     const created = await postJson('/org/users', {
       username: form.value.username.trim(),
       role: form.value.role,
-      password: form.value.password,
     })
-    notice.value = `${created.username} added. Give them the password you set - they will be asked to replace it when they first sign in.`
-    form.value = { username: '', role: availableRoles.value[0] ?? '', password: '' }
+    notice.value = ''
+    issuedPassword.value = { username: created.username, password: created.initial_password }
+    form.value = { username: '', role: availableRoles.value[0] ?? '' }
     await loadUsers()
   } catch (err) {
     actionError.value = err.message || 'Failed to add the user.'
@@ -69,20 +69,18 @@ async function addUser() {
 
 function startReset(row) {
   resettingId.value = resettingId.value === row.user_id ? '' : row.user_id
-  resetPassword.value = ''
   actionError.value = ''
   notice.value = ''
 }
 
 async function submitReset(row) {
-  if (resetPassword.value.length < MIN_PASSWORD_LENGTH) return
   actionError.value = ''
   try {
-    await postJson(`/org/users/${row.user_id}/password`, { password: resetPassword.value })
-    notice.value = `${row.username}'s password was reset and they were signed out everywhere.`
+    const result = await postJson(`/org/users/${row.user_id}/password`, {})
+    notice.value = ''
+    issuedPassword.value = { username: row.username, password: result.initial_password }
     resettingId.value = ''
-    resetPassword.value = ''
-    await loadUsers()
+      await loadUsers()
   } catch (err) {
     actionError.value = err.message || 'Failed to reset the password.'
   }
@@ -197,23 +195,16 @@ onMounted(async () => {
           </div>
 
           <div v-if="resettingId === row.user_id" class="flex flex-wrap gap-2 items-center">
-            <input
-              v-model="resetPassword"
-              type="password"
-              autocomplete="new-password"
-              :placeholder="`New password, at least ${MIN_PASSWORD_LENGTH} characters`"
-              class="flex-1 min-w-[16rem] min-h-11 rounded-lg border border-border-strong bg-surface text-ink px-3 py-2 text-sm"
-            />
             <button
               type="button"
-              :disabled="resetPassword.length < MIN_PASSWORD_LENGTH"
-              class="min-h-11 rounded-lg bg-navy px-4 text-sm font-semibold text-ink-inverse disabled:opacity-50"
+              class="min-h-11 rounded-lg bg-navy px-4 text-sm font-semibold text-ink-inverse"
               @click="submitReset(row)"
             >
-              Set password
+              Reset and show password
             </button>
             <p class="w-full text-xs text-ink-muted">
-              They will be signed out everywhere and asked to choose their own password.
+              A new one-time password is generated and shown once. They are signed out
+              everywhere and must choose their own before the account works again.
             </p>
           </div>
 
@@ -261,16 +252,6 @@ onMounted(async () => {
             >
               <option v-for="role in availableRoles" :key="role" :value="role">{{ role }}</option>
             </select>
-          </label>
-          <label class="block">
-            <span class="block text-sm font-medium text-ink mb-1">Initial password</span>
-            <input
-              v-model="form.password"
-              type="password"
-              autocomplete="new-password"
-              :placeholder="`At least ${MIN_PASSWORD_LENGTH} characters`"
-              class="w-full min-h-11 rounded-lg border border-border-strong bg-surface text-ink px-3 py-2"
-            />
           </label>
           <button
             type="submit"

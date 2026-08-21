@@ -13,7 +13,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.auth import sessions
-from backend.app.auth.passwords import hash_password, verify_password
+from backend.app.auth.passwords import (generate_handover_password, hash_password,
+                                        verify_password)
 from backend.app.errors import AppError
 from backend.app.models_db import (ConsentRecord, Customer, ModelFeedback, Organisation,
                                    ReferenceSignature, SessionRow, User, Verification)
@@ -223,13 +224,21 @@ def create_organisation(db: Session, *, code: str, name: str, org_type: str) -> 
     return {"code": org.code, "name": org.name, "type": org.type, "is_active": org.is_active}
 
 
-def create_user(db: Session, *, org_code: str, username: str, role: str, password: str,
-                scope_org_id: str | None = None, must_change_password: bool = True) -> dict:
+def create_user(db: Session, *, org_code: str, username: str, role: str,
+                password: str | None = None, scope_org_id: str | None = None,
+                must_change_password: bool = True) -> dict:
+    """Create an account with a one-time password the creator did not choose.
+
+    `password` exists for bootstrap, where the first operator types their own at a prompt
+    and it is a real credential from the start. Every other path leaves it None and takes
+    the generated one, which is returned once and never again.
+    """
     allowed = ROLE_ORG_TYPES.get(role)
     if allowed is None:
         raise AppError("INVALID_ROLE",
                        f"Role must be one of: {', '.join(sorted(ROLE_ORG_TYPES))}.", 422)
-    if len(password) < MIN_PASSWORD_LENGTH:
+    issued = password or generate_handover_password()
+    if len(issued) < MIN_PASSWORD_LENGTH:
         raise AppError("WEAK_PASSWORD",
                        f"The password must be at least {MIN_PASSWORD_LENGTH} characters.", 422)
 
@@ -245,7 +254,7 @@ def create_user(db: Session, *, org_code: str, username: str, role: str, passwor
     # Whoever typed this password knows it, so it is a handover token, not a credential.
     # The one exception is bootstrap, where the owner types their own at a prompt.
     user = User(org_id=org.id, username=username, role=role,
-                password_hash=hash_password(password),
+                password_hash=hash_password(issued),
                 must_change_password=must_change_password)
     db.add(user)
     try:
@@ -256,23 +265,25 @@ def create_user(db: Session, *, org_code: str, username: str, role: str, passwor
                        f"{org.code} already has a user called {username}.", 409)
     return {"user_id": user.id, "username": user.username, "role": user.role,
             "org_code": org.code, "is_active": user.is_active,
-            "must_change_password": user.must_change_password}
+            "must_change_password": user.must_change_password,
+            "initial_password": issued}
 
 
-def set_password(db: Session, *, user_id: str, password: str,
-                 scope_org_id: str | None = None) -> dict:
-    """An administrator hands out a new password. The owner must replace it before the
-    account does anything, and every existing session is cut."""
-    if len(password) < MIN_PASSWORD_LENGTH:
-        raise AppError("WEAK_PASSWORD",
-                       f"The password must be at least {MIN_PASSWORD_LENGTH} characters.", 422)
+def set_password(db: Session, *, user_id: str, scope_org_id: str | None = None) -> dict:
+    """Reset to a generated one-time password. The administrator does not choose it.
+
+    Same reasoning as creation: a reset is where a weak password gets typed, and a reset
+    account sits unused in exactly the state an attacker wants. The owner must replace it
+    before the account does anything, and every existing session is cut immediately.
+    """
+    issued = generate_handover_password()
     user = _user_in_scope(db, user_id, scope_org_id)
-    user.password_hash = hash_password(password)
+    user.password_hash = hash_password(issued)
     user.must_change_password = True
     db.commit()
     revoked = sessions.revoke_all_for_user(db, user.id)
-    return {"user_id": user.id, "username": user.username,
-            "must_change_password": True, "sessions_revoked": revoked}
+    return {"user_id": user.id, "username": user.username, "must_change_password": True,
+            "sessions_revoked": revoked, "initial_password": issued}
 
 
 def change_own_password(db: Session, *, user_id: str, current_password: str,

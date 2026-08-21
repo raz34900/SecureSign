@@ -14,8 +14,8 @@ NEW_BANK = {"code": "NB77", "name": "New Bank", "type": "financial"}
 
 
 def new_user(**overrides) -> dict:
-    body = {"org_code": "NB77", "username": "clerk9", "role": "clerk",
-            "password": "correct-horse-battery"}
+    # No password: the server generates a one-time one and returns it exactly once.
+    body = {"org_code": "NB77", "username": "clerk9", "role": "clerk"}
     return {**body, **overrides}
 
 
@@ -65,10 +65,10 @@ def test_a_created_user_can_sign_in(client, admin):
     admin.post("/admin/organisations", json=NEW_BANK)
     r = admin.post("/admin/users", json=new_user())
     assert r.status_code == 200, r.text
-    assert "password" not in r.json() and "password_hash" not in r.json()
+    assert "password_hash" not in r.json()
 
     client.cookies.clear()
-    signed_in = login(client, "NB77", "clerk9", password="correct-horse-battery")
+    signed_in = login(client, "NB77", "clerk9", password=r.json()["initial_password"])
     assert signed_in.status_code == 200
     assert signed_in.json() == {"role": "clerk", "org_type": "financial",
                                 "must_change_password": True}
@@ -94,11 +94,25 @@ def test_an_engineer_can_be_created_in_the_operator(admin):
     assert r.json()["role"] == "engineer"
 
 
-def test_a_short_password_is_rejected(admin):
+def test_the_creator_cannot_choose_the_first_password(admin):
+    """The attack this closes: whoever creates accounts picks one weak password and uses
+    it on every new account in the building, and each one stays a single guess away until
+    its owner happens to sign in. A password field sent anyway is ignored, not honoured.
+    """
     admin.post("/admin/organisations", json=NEW_BANK)
-    r = admin.post("/admin/users", json=new_user(password="short"))
-    assert r.status_code == 422
-    assert r.json()["error"]["code"] == "WEAK_PASSWORD"
+    r = admin.post("/admin/users", json=new_user(password="12341234aa"))
+    assert r.status_code == 200, r.text
+    assert r.json()["initial_password"] != "12341234aa"
+
+    client_password = r.json()["initial_password"]
+    assert len(client_password) >= 12
+
+
+def test_generated_passwords_are_unique_per_account(admin):
+    admin.post("/admin/organisations", json=NEW_BANK)
+    issued = {admin.post("/admin/users", json=new_user(username=f"clerk{n}")
+                         ).json()["initial_password"] for n in range(5)}
+    assert len(issued) == 5
 
 
 def test_a_duplicate_username_within_an_organisation_is_rejected(admin):
@@ -212,15 +226,17 @@ def test_a_handed_out_password_blocks_everything_until_replaced(client, admin):
     admin.post("/admin/organisations", json=NEW_BANK)
     admin.post("/admin/users", json=new_user())
 
+    issued = admin.post("/admin/users", json=new_user(username="clerk8")
+                        ).json()["initial_password"]
     client.cookies.clear()
-    assert login(client, "NB77", "clerk9", password="correct-horse-battery").json()[
+    assert login(client, "NB77", "clerk8", password=issued).json()[
         "must_change_password"] is True
 
     blocked = client.get("/customers/lookup/123456789")
     assert blocked.status_code == 403
     assert blocked.json()["error"]["code"] == "PASSWORD_CHANGE_REQUIRED"
 
-    r = client.post("/auth/password", json={"current_password": "correct-horse-battery",
+    r = client.post("/auth/password", json={"current_password": issued,
                                             "new_password": "something-else-entirely"})
     assert r.status_code == 200, r.text
     assert client.get("/auth/me").json()["must_change_password"] is False
@@ -250,19 +266,22 @@ def test_resetting_a_password_signs_the_account_out_everywhere(other_client, adm
     assert login(other_client, "BA11", "clerk1").status_code == 200
     assert other_client.get("/auth/me").status_code == 200
 
-    result = admin.post(f"/admin/users/{user_id_of(admin, 'clerk1')}/password",
-                        json={"password": "an-entirely-new-password"})
+    result = admin.post(f"/admin/users/{user_id_of(admin, 'clerk1')}/password")
     assert result.status_code == 200, result.text
     assert result.json()["sessions_revoked"] == 1
     assert other_client.get("/auth/me").status_code == 401
     assert login(other_client, "BA11", "clerk1",
-                 password="an-entirely-new-password").status_code == 200
+                 password=result.json()["initial_password"]).status_code == 200
 
 
-def test_a_reset_password_must_be_strong(admin):
+def test_a_reset_password_is_generated_too(admin):
+    """A reset is where a weak password gets typed, and a just-reset account sits unused
+    in exactly the state an attacker wants."""
     r = admin.post(f"/admin/users/{user_id_of(admin, 'clerk1')}/password",
-                   json={"password": "short"})
-    assert r.json()["error"]["code"] == "WEAK_PASSWORD"
+                   json={"password": "12341234aa"})
+    assert r.status_code == 200, r.text
+    assert r.json()["initial_password"] != "12341234aa"
+    assert r.json()["must_change_password"] is True
 
 
 # --- deletion ---------------------------------------------------------------
@@ -319,9 +338,11 @@ def test_an_organisation_holding_customer_records_is_not_deleted(client, admin):
     admin.post("/admin/organisations", json=NEW_BANK)
     admin.post("/admin/users", json=new_user())
 
+    issued = admin.post("/admin/users", json=new_user(username="clerk7")
+                        ).json()["initial_password"]
     client.cookies.clear()
-    login(client, "NB77", "clerk9", password="correct-horse-battery")
-    client.post("/auth/password", json={"current_password": "correct-horse-battery",
+    login(client, "NB77", "clerk7", password=issued)
+    client.post("/auth/password", json={"current_password": issued,
                                         "new_password": "something-else-entirely"})
     do_full_enrolment(client, "123456811")
 
@@ -366,3 +387,20 @@ def test_every_change_is_audited(admin, session_factory):
     with session_factory() as db:
         actions = {row.action for row in db.query(AuditLog).all()}
         assert {"create_organisation", "create_user"} <= actions
+
+
+def test_a_generated_password_is_not_guessable(admin):
+    """Uniqueness alone is not the property that matters - an incrementing counter is
+    unique too. Check the shape: long, mixed, and drawn from an alphabet without the
+    characters people mistranscribe."""
+    from backend.app.auth.passwords import generate_handover_password
+
+    issued = [generate_handover_password() for _ in range(200)]
+    assert len(set(issued)) == 200
+
+    for password in issued:
+        assert len(password) >= 16
+        assert set(password) <= set("abcdefghjkmnpqrstuvwxyz23456789-")
+        # The characters a reader confuses are absent, so nobody retypes it wrongly and
+        # then picks something weaker to avoid the problem.
+        assert not set(password) & set("l1IO0")
