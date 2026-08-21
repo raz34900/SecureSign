@@ -59,14 +59,21 @@ from signature_core.embed import Embedder
 from signature_core.quality import validate_image_quality
 
 
-def make_specimen_card(n: int = 9) -> bytes:
+def make_specimen_card(n: int = 9, variant: int = 0) -> bytes:
     # Row pitch is a multiple of 8 so every row sits at the same JPEG block phase
     # and all n crops decode byte-identical (the card is meant to be one writer).
+    #
+    # `variant` stands in for a second photograph: same writer, different picture. It
+    # changes the stroke, not the layout, so rows within one card stay identical to each
+    # other while two variants do not collide. Enrolment drops a crop it has already
+    # collected byte for byte, so a test that means "another photograph" has to hand it
+    # one rather than the same file again.
     card = Image.new("L", (800, 80 + n * 184 + 100), 255)
     d = ImageDraw.Draw(card)
     for i in range(n):
         y = 80 + i * 184
-        d.line([(150, y), (300, y + 40), (450, y - 10), (650, y + 30)], fill=0, width=6)
+        d.line([(150 + variant * 7, y), (300, y + 40 - variant * 5),
+                (450, y - 10), (650 + variant * 3, y + 30)], fill=0, width=6)
     buf = io.BytesIO()
     card.convert("RGB").save(buf, format="JPEG")
     return buf.getvalue()

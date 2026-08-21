@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "node src/routing.check.mjs",
+    "check": "node src/routing.check.mjs && node src/enrolStorage.check.mjs",
     "build": "npm run check && vite build",
     "preview": "vite preview"
   },
