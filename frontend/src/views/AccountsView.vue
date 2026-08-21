@@ -555,7 +555,7 @@ onMounted(async () => {
           <button
             type="submit"
             :disabled="!orgFormValid || orgSaving"
-            class="min-h-11 rounded-lg bg-brand-green px-4 font-semibold text-navy disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
+            class="min-h-11 rounded-lg bg-navy px-4 font-semibold text-ink-inverse disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
           >
             {{ orgSaving ? 'Adding…' : 'Add organisation' }}
           </button>
@@ -782,7 +782,7 @@ onMounted(async () => {
           <button
             type="submit"
             :disabled="!userFormValid || userSaving"
-            class="min-h-11 rounded-lg bg-brand-green px-4 font-semibold text-navy disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
+            class="min-h-11 rounded-lg bg-navy px-4 font-semibold text-ink-inverse disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
           >
             {{ userSaving ? 'Adding…' : 'Add user' }}
           </button>

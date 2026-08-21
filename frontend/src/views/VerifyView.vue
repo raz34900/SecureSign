@@ -564,14 +564,14 @@ async function reset() {
           <button
             ref="chooseFileButton"
             type="button"
-            class="min-h-11 flex-1 rounded-lg border-2 border-dashed border-border-strong px-4 py-5 text-base text-ink-muted transition-colors hover:border-brand-green hover:text-navy"
+            class="min-h-11 flex-1 rounded-lg border-2 border-dashed border-border-strong px-4 py-5 text-base text-ink-muted transition-colors hover:border-navy hover:text-navy"
             @click="openFilePicker"
           >
             Choose a file
           </button>
           <button
             type="button"
-            class="min-h-11 flex-1 rounded-lg border-2 border-dashed border-border-strong px-4 py-5 text-base text-ink-muted transition-colors hover:border-brand-green hover:text-navy"
+            class="min-h-11 flex-1 rounded-lg border-2 border-dashed border-border-strong px-4 py-5 text-base text-ink-muted transition-colors hover:border-navy hover:text-navy"
             @click="openCamera"
           >
             Use the camera
@@ -751,7 +751,7 @@ async function reset() {
       <button
         type="submit"
         :disabled="!canSubmit"
-        class="min-h-11 w-full rounded-lg bg-brand-green px-4 py-3 text-base font-semibold text-navy transition enabled:hover:brightness-95 disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-subtle"
+        class="min-h-11 w-full rounded-lg bg-navy px-4 py-3 text-base font-semibold text-ink-inverse transition-colors enabled:hover:bg-navy-deep disabled:cursor-not-allowed disabled:bg-sunken disabled:text-ink-subtle"
       >
         {{ submitLabel }}
       </button>

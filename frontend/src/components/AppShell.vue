@@ -1,6 +1,7 @@
 <script setup>
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import BrandMark from './BrandMark.vue'
 import {
   state, isClerk, isVerifier, isEngineer, isOrgAdmin, mustChangePassword, logout,
 } from '../auth.js'
@@ -48,7 +49,10 @@ async function handleLogout() {
       <div
         class="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:px-6"
       >
-        <span class="text-lg font-bold tracking-tight">SecureSign</span>
+        <span class="flex items-center gap-2.5">
+          <BrandMark :size="22" class="shrink-0" />
+          <span class="text-lg font-semibold tracking-tight">SecureSign</span>
+        </span>
 
         <div
           class="order-last -mx-1 flex w-full items-center gap-1 overflow-x-auto sm:order-none sm:mx-0 sm:w-auto"
@@ -58,7 +62,7 @@ async function handleLogout() {
             :key="link.to"
             :to="link.to"
             class="min-h-11 shrink-0 rounded px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white flex items-center"
-            active-class="bg-white/15 text-white"
+            active-class="bg-white/12 text-white shadow-[inset_0_-2px_0_0_var(--color-brand-green)]"
           >
             {{ link.label }}
           </router-link>
@@ -81,7 +85,7 @@ async function handleLogout() {
             Password
           </router-link>
           <button
-            class="min-h-11 rounded bg-brand-green px-4 text-sm font-semibold text-navy transition-colors hover:brightness-95"
+            class="min-h-11 rounded border border-white/25 px-4 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white"
             @click="handleLogout"
           >
             Logout
@@ -90,7 +94,8 @@ async function handleLogout() {
       </div>
     </nav>
 
-    <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <router-view v-if="!showNav" />
+    <main v-else class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
       <router-view />
     </main>
   </div>
