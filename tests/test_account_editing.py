@@ -187,3 +187,54 @@ def test_an_org_admin_search_cannot_reach_another_organisation(client, seeded):
     body = client.get("/org/users?q=BB22").json()
     assert body["users"] == []
     assert body["total"] == 0
+
+
+def test_a_row_says_why_it_cannot_be_deleted(client, seeded):
+    """"Has history" is true of everything and useful for nothing. The panel should not
+    offer a button that always fails, and when it withholds one it should say what is in
+    the way — the server already knows, so there is nothing to guess at."""
+    from test_enrolment import do_full_enrolment
+    from test_signature_core import make_signature
+    from test_verify import png, verify
+
+    login(client, "BA11", "clerk1")
+    do_full_enrolment(client, "123456790")
+    verify(client, "123456790", png(make_signature()))
+    client.cookies.clear()
+
+    enter_panel(client)
+    clerk = next(u for u in client.get("/admin/users").json()["users"]
+                 if u["username"] == "clerk1")
+    assert clerk["deletable"] is False
+    assert any("verification" in reason for reason in clerk["blockers"])
+
+    orgs = {o["code"]: o for o in client.get("/admin/organisations").json()["organisations"]}
+    bank = orgs["BA11"]
+    assert bank["deletable"] is False
+    assert any("customer" in reason for reason in bank["blockers"])
+
+    # And the reasons are real: the delete genuinely refuses, naming the same things.
+    refused = client.delete("/admin/organisations/BA11")
+    assert refused.status_code == 409
+    for reason in bank["blockers"]:
+        assert reason in refused.json()["error"]["message"]
+
+
+def test_an_empty_organisation_reports_itself_deletable(client, seeded):
+    enter_panel(client)
+    client.post("/admin/organisations", json={"code": "NEW1", "name": "Fresh Bank",
+                                              "type": "financial"})
+    orgs = {o["code"]: o for o in client.get("/admin/organisations").json()["organisations"]}
+    assert orgs["NEW1"]["deletable"] is True
+    assert orgs["NEW1"]["blockers"] == []
+    assert client.delete("/admin/organisations/NEW1").status_code == 200
+
+
+def test_the_operator_never_offers_deletion(client, seeded):
+    """It runs the registry. Not deletable whatever it holds, and the panel says so
+    rather than showing a button that would be refused."""
+    enter_panel(client)
+    orgs = {o["code"]: o for o in client.get("/admin/organisations").json()["organisations"]}
+    operator = next(o for o in orgs.values() if o["type"] == "operator")
+    assert operator["deletable"] is False
+    assert operator["blockers"] == ["the operator organisation runs the registry"]

@@ -361,14 +361,23 @@ onMounted(async () => {
                     >
                       {{ org.is_active ? 'Active' : 'Disabled' }}
                     </button>
+                    <!-- Offered only when it would succeed. A button that always fails
+                         teaches the reader to distrust every other button on the page. -->
                     <button
-                      v-if="org.type !== 'operator'"
+                      v-if="org.deletable"
                       type="button"
                       class="min-h-11 rounded-lg border border-danger-border bg-surface px-3 text-xs font-medium text-danger"
                       @click="confirmingDeleteOrg = confirmingDeleteOrg === org.code ? '' : org.code"
                     >
                       {{ confirmingDeleteOrg === org.code ? 'Cancel' : 'Delete' }}
                     </button>
+                    <span
+                      v-else
+                      class="min-h-11 inline-flex items-center px-2 text-xs text-ink-subtle"
+                      title="Disable it instead: sign-in is blocked and the records are kept."
+                    >
+                      Cannot delete — {{ (org.blockers || []).join(', ') }}
+                    </span>
                     <button
                       v-if="confirmingDeleteOrg === org.code"
                       type="button"
@@ -550,12 +559,14 @@ onMounted(async () => {
                     >
                       {{ confirmingDeleteUser === row.user_id ? 'Cancel' : 'Delete' }}
                     </button>
+                    <!-- "Has history" told the reader nothing. The server already knows
+                         exactly what is in the way, so say it. -->
                     <span
                       v-else
                       class="min-h-11 inline-flex items-center px-2 text-xs text-ink-subtle"
-                      title="This account has verifications or reports on record; deleting it would break the audit trail."
+                      :title="`Deleting this account would break the audit trail. Disable it instead.`"
                     >
-                      Has history
+                      Cannot delete — {{ (row.blockers || []).join(', ') || 'has history' }}
                     </span>
                     <button
                       v-if="confirmingDeleteUser === row.user_id"

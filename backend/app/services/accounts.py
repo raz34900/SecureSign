@@ -61,13 +61,39 @@ def list_organisations(db: Session) -> list[dict]:
                              .where(User.is_active.is_(True))
                              .group_by(User.org_id)).all())
     rows = db.execute(select(Organisation).order_by(Organisation.code)).scalars()
-    return [{"code": org.code, "name": org.name, "type": org.type,
-             "is_active": org.is_active, "active_users": counts.get(org.id, 0),
-             "created_at": org.created_at.isoformat()} for org in rows]
+    out = []
+    for org in rows:
+        # The operator runs the registry and is never deletable, whatever it holds.
+        blockers = ([] if org.type != "operator"
+                    else ["the operator organisation runs the registry"])
+        blockers = blockers or organisation_deletion_blockers(db, org.id)
+        out.append({"code": org.code, "name": org.name, "type": org.type,
+                    "is_active": org.is_active, "active_users": counts.get(org.id, 0),
+                    "deletable": not blockers, "blockers": blockers,
+                    "created_at": org.created_at.isoformat()})
+    return out
 
 
 DEFAULT_PAGE = 50
 MAX_PAGE = 200
+
+
+LIKE_ESCAPE = "\\"
+
+
+def _contains(term: str) -> str:
+    """A LIKE pattern matching this text literally.
+
+    Binding the parameter stops SQL injection; it does nothing about LIKE's own
+    metacharacters. Unescaped, a search for `%` is the pattern `%%%` and matches every
+    row — a search box that quietly means "show me everything". Escaping also makes a
+    name that genuinely contains a percent sign findable.
+    """
+    escaped = (term.strip().lower()
+               .replace(LIKE_ESCAPE, LIKE_ESCAPE * 2)
+               .replace("%", f"{LIKE_ESCAPE}%")
+               .replace("_", f"{LIKE_ESCAPE}_"))
+    return f"%{escaped}%"
 
 
 def _user_filters(scope_org_id: str | None, search: str | None, role: str | None):
@@ -77,10 +103,11 @@ def _user_filters(scope_org_id: str | None, search: str | None, role: str | None
     if role:
         conditions.append(User.role == role)
     if search:
-        like = f"%{search.strip().lower()}%"
-        conditions.append(or_(func.lower(User.username).like(like),
-                              func.lower(Organisation.code).like(like),
-                              func.lower(Organisation.name).like(like)))
+        like = _contains(search)
+        conditions.append(or_(
+            func.lower(User.username).like(like, escape=LIKE_ESCAPE),
+            func.lower(Organisation.code).like(like, escape=LIKE_ESCAPE),
+            func.lower(Organisation.name).like(like, escape=LIKE_ESCAPE)))
     return conditions
 
 
@@ -106,10 +133,18 @@ def list_users(db: Session, scope_org_id: str | None = None, *, search: str | No
             .where(*_user_filters(scope_org_id, search, role))
             .order_by(Organisation.code, User.username)
             .limit(limit).offset(offset))
+
+    cache: dict[str, list[str]] = {}
+
+    def blockers_for(user_id: str) -> list[str]:
+        if user_id not in cache:
+            cache[user_id] = user_deletion_blockers(db, user_id)
+        return cache[user_id]
+
     return [{"user_id": user.id, "username": user.username, "role": user.role,
              "is_active": user.is_active, "org_code": org.code, "org_name": org.name,
              "must_change_password": user.must_change_password,
-             "deletable": not user_deletion_blockers(db, user.id),
+             "deletable": not blockers_for(user.id), "blockers": blockers_for(user.id),
              "created_at": user.created_at.isoformat()}
             for user, org in db.execute(stmt).all()]
 
