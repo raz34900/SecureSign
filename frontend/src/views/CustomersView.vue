@@ -122,7 +122,7 @@ async function confirmDelete(referenceId) {
         <button
           type="button"
           :disabled="!isValidNationalId(lookupId.trim()) || loading"
-          class="min-h-11 bg-brand-green text-navy font-semibold rounded-lg px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
+          class="min-h-11 bg-navy text-ink-inverse font-semibold rounded-lg px-4 py-2 disabled:opacity-50 disabled:cursor-not-allowed"
           @click="loadCustomer"
         >
           {{ loading ? 'Loading…' : 'Load' }}
@@ -176,7 +176,7 @@ async function confirmDelete(referenceId) {
           </h3>
           <RouterLink
             :to="{ name: 'enrol', query: { national_id: lookupId.trim(), full_name: customer.full_name } }"
-            class="min-h-11 inline-flex items-center rounded-lg bg-brand-green px-4 text-sm font-semibold text-navy"
+            class="min-h-11 inline-flex items-center rounded-lg bg-navy px-4 text-sm font-semibold text-ink-inverse"
           >
             Add signatures
           </RouterLink>

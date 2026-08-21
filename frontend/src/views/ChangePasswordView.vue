@@ -136,7 +136,7 @@ async function handleSubmit() {
         <button
           type="submit"
           :disabled="!canSubmit || pending"
-          class="w-full min-h-11 bg-brand-green text-navy font-semibold rounded-lg py-2 disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
+          class="w-full min-h-11 bg-navy text-ink-inverse font-semibold rounded-lg py-2 disabled:bg-sunken disabled:text-ink-subtle disabled:cursor-not-allowed"
         >
           {{ pending ? 'Saving…' : 'Save password' }}
         </button>

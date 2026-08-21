@@ -195,7 +195,7 @@ onMounted(loadHistory)
             <button
               type="button"
               :disabled="!nationalIdValid || loading"
-              class="min-h-11 bg-brand-green text-navy font-semibold rounded-lg px-4 disabled:opacity-50 disabled:cursor-not-allowed"
+              class="min-h-11 bg-navy text-ink-inverse font-semibold rounded-lg px-4 disabled:opacity-50 disabled:cursor-not-allowed"
               @click="loadHistory"
             >
               Search
