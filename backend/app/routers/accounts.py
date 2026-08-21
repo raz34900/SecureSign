@@ -1,6 +1,6 @@
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, StringConstraints
 from sqlalchemy.orm import Session
 
@@ -38,6 +38,14 @@ class NewPassword(BaseModel):
     password: str
 
 
+class RenameOrganisation(BaseModel):
+    name: OrgName
+
+
+class ChangeRole(BaseModel):
+    role: Literal["clerk", "verifier", "org_admin", "engineer"]
+
+
 @router.get("/organisations")
 def organisations(db: Session = Depends(get_db),
                   user: CurrentUser = Depends(require_roles("engineer"))) -> dict:
@@ -66,10 +74,38 @@ def set_organisation_active(code: str, body: ActiveFlag, db: Session = Depends(g
     return result
 
 
+@router.post("/organisations/{code}/name")
+def rename_organisation(code: str, body: RenameOrganisation, db: Session = Depends(get_db),
+                        user: CurrentUser = Depends(require_roles("engineer"))) -> dict:
+    result = accounts.rename_organisation(db, code=code, name=body.name)
+    audit.write(db, user_id=user.user_id, org_id=user.org_id, action="rename_organisation",
+                resource_type="organisation", resource_id=code, outcome="allowed",
+                detail={"name": result["name"]})
+    return result
+
+
+@router.post("/users/{user_id}/role")
+def change_role(user_id: str, body: ChangeRole, db: Session = Depends(get_db),
+                user: CurrentUser = Depends(require_roles("engineer"))) -> dict:
+    result = accounts.set_user_role(db, user_id=user_id, role=body.role,
+                                    acting_user_id=user.user_id)
+    audit.write(db, user_id=user.user_id, org_id=user.org_id, action="change_role",
+                resource_type="user", resource_id=user_id, outcome="allowed",
+                detail={"from": result["previous_role"], "to": result["role"]})
+    return result
+
+
 @router.get("/users")
 def users(db: Session = Depends(get_db),
-          user: CurrentUser = Depends(require_roles("engineer"))) -> dict:
-    return {"users": accounts.list_users(db)}
+          user: CurrentUser = Depends(require_roles("engineer")),
+          q: Annotated[str | None, Query(max_length=80)] = None,
+          role: Literal["clerk", "verifier", "org_admin", "engineer"] | None = None,
+          limit: Annotated[int, Query(ge=1, le=accounts.MAX_PAGE)] = accounts.DEFAULT_PAGE,
+          offset: Annotated[int, Query(ge=0)] = 0) -> dict:
+    """One page of accounts. `q` matches username, organisation code or organisation name."""
+    return {"users": accounts.list_users(db, search=q, role=role, limit=limit, offset=offset),
+            "total": accounts.count_users(db, search=q, role=role),
+            "limit": limit, "offset": offset}
 
 
 @router.post("/users")

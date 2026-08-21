@@ -3,9 +3,13 @@ from test_enrolment import do_full_enrolment
 from test_signature_core import make_signature
 from test_verify import png, verify
 
+# Exact, not a subset: the list view is the widest-read endpoint in the product, so a
+# field appearing here that nobody chose is how a leak arrives. `has_image` is a boolean,
+# never the image itself — the picture is only served by the detail endpoint, one row at
+# a time, and each read is audited.
 FIELDS = {"request_id", "verdict", "distance", "threshold_used", "confidence",
           "model_version", "created_at", "customer_name", "national_id_masked",
-          "performed_by", "feedback"}
+          "performed_by", "feedback", "has_image"}
 
 
 def seed_two_orgs(client):

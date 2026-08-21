@@ -8,7 +8,7 @@ organisation — an engineer outside the operator would be a route into the engi
 panel for an institution. And nothing is ever deleted: customers, verifications and
 audit rows all point back at these records, so accounts are deactivated instead.
 """
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -66,18 +66,111 @@ def list_organisations(db: Session) -> list[dict]:
              "created_at": org.created_at.isoformat()} for org in rows]
 
 
-def list_users(db: Session, scope_org_id: str | None = None) -> list[dict]:
+DEFAULT_PAGE = 50
+MAX_PAGE = 200
+
+
+def _user_filters(scope_org_id: str | None, search: str | None, role: str | None):
+    conditions = []
+    if scope_org_id is not None:
+        conditions.append(User.org_id == scope_org_id)
+    if role:
+        conditions.append(User.role == role)
+    if search:
+        like = f"%{search.strip().lower()}%"
+        conditions.append(or_(func.lower(User.username).like(like),
+                              func.lower(Organisation.code).like(like),
+                              func.lower(Organisation.name).like(like)))
+    return conditions
+
+
+def count_users(db: Session, scope_org_id: str | None = None, *, search: str | None = None,
+                role: str | None = None) -> int:
+    return int(db.execute(
+        select(func.count()).select_from(User)
+        .join(Organisation, Organisation.id == User.org_id)
+        .where(*_user_filters(scope_org_id, search, role))).scalar_one())
+
+
+def list_users(db: Session, scope_org_id: str | None = None, *, search: str | None = None,
+               role: str | None = None, limit: int = DEFAULT_PAGE,
+               offset: int = 0) -> list[dict]:
+    """One page of accounts, filtered by username, organisation or role.
+
+    Paged rather than complete on purpose. Beyond the response size, each row asks the
+    database whether the account has history before reporting it deletable, so returning
+    every user turned one page load into two queries per account.
+    """
     stmt = (select(User, Organisation)
             .join(Organisation, Organisation.id == User.org_id)
-            .order_by(Organisation.code, User.username))
-    if scope_org_id is not None:
-        stmt = stmt.where(User.org_id == scope_org_id)
+            .where(*_user_filters(scope_org_id, search, role))
+            .order_by(Organisation.code, User.username)
+            .limit(limit).offset(offset))
     return [{"user_id": user.id, "username": user.username, "role": user.role,
              "is_active": user.is_active, "org_code": org.code, "org_name": org.name,
              "must_change_password": user.must_change_password,
              "deletable": not user_deletion_blockers(db, user.id),
              "created_at": user.created_at.isoformat()}
             for user, org in db.execute(stmt).all()]
+
+
+def rename_organisation(db: Session, *, code: str, name: str) -> dict:
+    """Change the display name only.
+
+    The code is not editable, and that is the point: it is the identifier people sign in
+    with and the one written into every audit row, so changing it would lock users out
+    and detach the history from the organisation that made it. A code typed wrongly is
+    fixed by deleting the organisation and creating it again, which the deletion rules
+    allow precisely while it still holds nothing.
+    """
+    org = _org_by_code(db, code)
+    org.name = name.strip()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise AppError("DUPLICATE_ORGANISATION",
+                       "Another organisation already uses this name.", 409)
+    return {"code": org.code, "name": org.name, "type": org.type, "is_active": org.is_active}
+
+
+def set_user_role(db: Session, *, user_id: str, role: str, acting_user_id: str,
+                  scope_org_id: str | None = None) -> dict:
+    """Promote or demote an existing account.
+
+    Same rules as creating one — a role must suit the organisation's type — plus two the
+    create path does not need: nobody changes their own role, and an organisation
+    administrator cannot grant engineer, because that is the operator's own role.
+
+    There is deliberately no last-engineer guard here, unlike delete and disable. It
+    would be unreachable: engineer is the only role valid in an operator organisation, so
+    every attempt to move an engineer to something else is already refused for the
+    organisation's type. A branch that cannot run reads as a protection that exists.
+    """
+    allowed = ROLE_ORG_TYPES.get(role)
+    if allowed is None:
+        raise AppError("INVALID_ROLE",
+                       f"Role must be one of: {', '.join(sorted(ROLE_ORG_TYPES))}.", 422)
+    if scope_org_id is not None and role == "engineer":
+        raise AppError("ROLE_NOT_ALLOWED",
+                       "An organisation administrator cannot grant the engineer role.", 422)
+
+    user = _user_in_scope(db, user_id, scope_org_id)
+    org = db.get(Organisation, user.org_id)
+    if org.type not in allowed:
+        raise AppError("ROLE_NOT_ALLOWED",
+                       f"The {role} role is only valid in organisations of type "
+                       f"{' or '.join(sorted(allowed))}. {org.code} is {org.type}.", 422)
+
+    if user.id == acting_user_id and user.role != role:
+        raise AppError("CANNOT_CHANGE_OWN_ROLE",
+                       "You cannot change the role of the account you are signed in with.",
+                       422)
+
+    previous, user.role = user.role, role
+    db.commit()
+    return {"user_id": user.id, "username": user.username, "role": user.role,
+            "previous_role": previous, "org_code": org.code}
 
 
 def create_organisation(db: Session, *, code: str, name: str, org_type: str) -> dict:

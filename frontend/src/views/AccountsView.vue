@@ -20,8 +20,17 @@ const ROLE_ORG_TYPES = {
 
 const MIN_PASSWORD_LENGTH = 12
 
+const PAGE_SIZE = 25
+
 const organisations = ref([])
 const users = ref([])
+const userTotal = ref(0)
+const userOffset = ref(0)
+const userSearch = ref('')
+const userRoleFilter = ref('')
+const renamingCode = ref('')
+const renameValue = ref('')
+const rowError = ref('')
 const loading = ref(true)
 const loadError = ref('')
 
@@ -59,12 +68,94 @@ const userFormValid = computed(
     && userForm.value.password.length >= MIN_PASSWORD_LENGTH,
 )
 
+/* Which roles this account could hold, given the type of organisation it belongs to.
+   Mirrors the server, which is the authority and re-checks every change. */
+function rolesForOrgType(row) {
+  const type = organisations.value.find((org) => org.code === row.org_code)?.type
+  if (!type) return [row.role]
+  return Object.keys(ROLE_ORG_TYPES).filter((role) => ROLE_ORG_TYPES[role].includes(type))
+}
+
+function userQuery() {
+  const params = new URLSearchParams()
+  if (userSearch.value.trim()) params.set('q', userSearch.value.trim())
+  if (userRoleFilter.value) params.set('role', userRoleFilter.value)
+  params.set('limit', String(PAGE_SIZE))
+  params.set('offset', String(userOffset.value))
+  return params.toString()
+}
+
+async function loadUsers() {
+  const people = await get(`/admin/users?${userQuery()}`)
+  users.value = people.users
+  userTotal.value = people.total ?? people.users.length
+}
+
+/* Searching resets to the first page. Keeping the offset across a new search lands the
+   reader on an empty page of a shorter result set, which reads as "no matches". */
+async function applyUserSearch() {
+  userOffset.value = 0
+  rowError.value = ''
+  try {
+    await loadUsers()
+  } catch (err) {
+    rowError.value = err.message || 'Failed to search accounts.'
+  }
+}
+
+async function pageUsers(delta) {
+  userOffset.value = Math.max(0, userOffset.value + delta * PAGE_SIZE)
+  await applyUserSearchKeepingPage()
+}
+
+async function applyUserSearchKeepingPage() {
+  rowError.value = ''
+  try {
+    await loadUsers()
+  } catch (err) {
+    rowError.value = err.message || 'Failed to load accounts.'
+  }
+}
+
+async function startRename(org) {
+  renamingCode.value = org.code
+  renameValue.value = org.name
+  rowError.value = ''
+}
+
+async function saveRename() {
+  const code = renamingCode.value
+  if (!code || renameValue.value.trim().length < 2) return
+  rowError.value = ''
+  try {
+    await postJson(`/admin/organisations/${code}/name`, { name: renameValue.value.trim() })
+    renamingCode.value = ''
+    await loadAll()
+  } catch (err) {
+    rowError.value = err.message || 'Failed to rename the organisation.'
+  }
+}
+
+async function changeRole(row, role) {
+  if (!role || role === row.role) return
+  rowError.value = ''
+  try {
+    await postJson(`/admin/users/${row.user_id}/role`, { role })
+    await loadUsers()
+  } catch (err) {
+    rowError.value = err.message || 'Failed to change the role.'
+    await loadUsers()  // put the select back to what the server actually holds
+  }
+}
+
 async function loadAll() {
   loadError.value = ''
   try {
-    const [orgs, people] = await Promise.all([get('/admin/organisations'), get('/admin/users')])
+    const [orgs, people] = await Promise.all([
+      get('/admin/organisations'), get(`/admin/users?${userQuery()}`)])
     organisations.value = orgs.organisations
     users.value = people.users
+    userTotal.value = people.total ?? people.users.length
   } catch (err) {
     // A 404 means the public entrypoint. It does not get told where the panel lives.
     loadError.value = err instanceof ApiError && err.status === 404
@@ -232,7 +323,30 @@ onMounted(async () => {
             <tbody class="divide-y divide-border">
               <tr v-for="org in organisations" :key="org.code">
                 <td class="px-4 py-2 font-mono font-semibold text-navy">{{ org.code }}</td>
-                <td class="px-4 py-2 text-ink">{{ org.name }}</td>
+                <td class="px-4 py-2 text-ink">
+                  <!-- The code stays fixed: it is what people sign in with and what every
+                       audit row records. Only the display name is editable. -->
+                  <template v-if="renamingCode === org.code">
+                    <input
+                      v-model="renameValue"
+                      type="text"
+                      maxlength="120"
+                      class="w-44 rounded border border-border-strong bg-surface px-2 py-1 text-sm"
+                      @keyup.enter="saveRename"
+                      @keyup.esc="renamingCode = ''"
+                    />
+                    <button type="button" class="ml-2 text-xs font-semibold text-navy underline" @click="saveRename">Save</button>
+                    <button type="button" class="ml-2 text-xs text-ink-muted underline" @click="renamingCode = ''">Cancel</button>
+                  </template>
+                  <template v-else>
+                    {{ org.name }}
+                    <button
+                      type="button"
+                      class="ml-2 text-xs text-ink-muted underline underline-offset-2"
+                      @click="startRename(org)"
+                    >Rename</button>
+                  </template>
+                </td>
                 <td class="px-4 py-2 text-ink-muted capitalize">{{ org.type }}</td>
                 <td class="px-4 py-2 text-ink-muted">{{ org.active_users }}</td>
                 <td class="px-4 py-2">
@@ -323,7 +437,53 @@ onMounted(async () => {
 
       <!-- Users -->
       <div class="bg-surface rounded-lg shadow p-6 space-y-4">
-        <h2 class="text-lg font-semibold text-navy">Users</h2>
+        <h2 class="text-lg font-semibold text-navy">
+          Users
+          <span class="ml-2 text-sm font-normal text-ink-muted">{{ userTotal }} total</span>
+        </h2>
+
+        <!-- Searched on the server. A filter box over a fully-downloaded list stops
+             working at exactly the size that makes a filter necessary. -->
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="block">
+            <span class="block text-xs font-medium text-ink mb-1">Search</span>
+            <input
+              v-model="userSearch"
+              type="search"
+              placeholder="Username, organisation code or name"
+              class="w-72 min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm text-ink"
+              @keyup.enter="applyUserSearch"
+            />
+          </label>
+          <label class="block">
+            <span class="block text-xs font-medium text-ink mb-1">Role</span>
+            <select
+              v-model="userRoleFilter"
+              class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm text-ink"
+              @change="applyUserSearch"
+            >
+              <option value="">Any</option>
+              <option v-for="role in Object.keys(ROLE_ORG_TYPES)" :key="role" :value="role">{{ role }}</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="min-h-11 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium text-navy"
+            @click="applyUserSearch"
+          >
+            Search
+          </button>
+          <button
+            v-if="userSearch || userRoleFilter"
+            type="button"
+            class="min-h-11 px-3 text-sm text-ink-muted underline underline-offset-2"
+            @click="userSearch = ''; userRoleFilter = ''; applyUserSearch()"
+          >
+            Clear
+          </button>
+        </div>
+
+        <p v-if="rowError" class="text-sm text-danger">{{ rowError }}</p>
 
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
@@ -348,7 +508,20 @@ onMounted(async () => {
                     password not yet set by owner
                   </span>
                 </td>
-                <td class="px-4 py-2 text-ink-muted">{{ row.role }}</td>
+                <td class="px-4 py-2">
+                  <!-- Only roles valid for this organisation's type are offered. The
+                       server re-checks; this just avoids proposing a rejected change. -->
+                  <select
+                    :value="row.role"
+                    :aria-label="`Role for ${row.username}`"
+                    class="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-ink"
+                    @change="changeRole(row, $event.target.value)"
+                  >
+                    <option v-for="role in rolesForOrgType(row)" :key="role" :value="role">
+                      {{ role }}
+                    </option>
+                  </select>
+                </td>
                 <td class="px-4 py-2 text-ink-muted">{{ formatDateTime(row.created_at) }}</td>
                 <td class="px-4 py-2">
                   <div class="flex flex-wrap gap-2">
@@ -415,6 +588,32 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div v-if="userTotal > users.length || userOffset > 0"
+             class="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <p class="text-ink-muted">
+            Showing {{ users.length ? userOffset + 1 : 0 }}–{{ userOffset + users.length }}
+            of {{ userTotal }}
+          </p>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              :disabled="userOffset === 0"
+              class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 font-medium text-navy disabled:text-ink-subtle"
+              @click="pageUsers(-1)"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              :disabled="userOffset + users.length >= userTotal"
+              class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 font-medium text-navy disabled:text-ink-subtle"
+              @click="pageUsers(1)"
+            >
+              Next
+            </button>
+          </div>
         </div>
 
         <p v-if="userError" class="text-sm text-danger">{{ userError }}</p>
