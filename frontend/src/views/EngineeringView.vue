@@ -225,7 +225,7 @@ onMounted(async () => {
                 System said {{ report.verification?.verdict ?? 'unknown' }}, reported as {{ report.claimed_label }}
               </span>
               <span
-                v-if="report.verification?.borderline"
+                v-if="report.verification?.band === 'borderline'"
                 class="rounded-full bg-borderline-surface text-borderline border border-borderline-border px-2 py-0.5 text-2xs font-bold"
               >
                 NEAR THRESHOLD

@@ -8,11 +8,10 @@ import {
   formatConfidence,
   formatDateTime,
   formatDistance,
-  classifyDecision,
   decisionLabel,
+  isNationalId,
+  pngSrc,
 } from '../format.js'
-
-const NATIONAL_ID_PATTERN = /^\d{9}$/
 
 const SCALE_MAX_DISTANCE = 1.0
 
@@ -38,7 +37,7 @@ const chooseFileButton = ref(null)
 const verdictHeading = ref(null)
 
 const nationalIdTouched = ref(false)
-const nationalIdValid = computed(() => NATIONAL_ID_PATTERN.test(nationalId.value))
+const nationalIdValid = computed(() => isNationalId(nationalId.value))
 
 /* ---------- which image gets checked ---------- */
 
@@ -57,7 +56,7 @@ const wholePreview = ref('')
 
 const previewUrl = computed(() =>
   activeRegion.value
-    ? `data:image/png;base64,${activeRegion.value.image}`
+    ? pngSrc(activeRegion.value.image)
     : originalPreviewUrl.value,
 )
 
@@ -102,7 +101,7 @@ const regionAnnouncement = computed(() => {
 
 const comparedImageUrl = computed(() =>
   result.value?.query_preview_png_base64
-    ? `data:image/png;base64,${result.value.query_preview_png_base64}`
+    ? pngSrc(result.value.query_preview_png_base64)
     : previewUrl.value,
 )
 
@@ -112,7 +111,7 @@ const expandedAnchorKey = ref(null)
 /* ---------- verdict ---------- */
 
 const decision = computed(() =>
-  result.value ? classifyDecision(result.value.distance, result.value.threshold) : null,
+  result.value ? result.value.band : null,
 )
 
 const verdictWord = computed(() =>
@@ -170,7 +169,7 @@ function scalePercent(value) {
 
 const rawReferences = computed(() => result.value?.references ?? [])
 
-const matchedCount = computed(() => rawReferences.value.filter((r) => r.passed).length)
+const matchedCount = computed(() => rawReferences.value.filter((r) => r.band === 'valid').length)
 
 const anchors = computed(() => {
   const groups = new Map()
@@ -185,7 +184,7 @@ const anchors = computed(() => {
       image: reference.image_png_base64,
       distance: Number(reference.distance),
       confidence: reference.confidence,
-      passed: reference.passed,
+      band: reference.band,
       position: index + 1,
       count: 1,
     })
@@ -233,35 +232,24 @@ const anchorGroups = computed(() => {
   ]
 })
 
-function anchorKind(anchor) {
-  return classifyDecision(anchor.distance, result.value.threshold)
+const ANCHOR_THEMES = {
+  valid: { label: 'Match', tile: 'border-valid-border bg-valid-surface', dot: 'bg-valid' },
+  fraud: { label: 'No match', tile: 'border-fraud-border bg-fraud-surface', dot: 'bg-fraud' },
+  borderline: {
+    label: 'Too close to call',
+    tile: 'border-borderline-border bg-borderline-surface border-dashed',
+    dot: 'bg-borderline',
+  },
 }
 
-function anchorLabel(anchor) {
-  const kind = anchorKind(anchor)
-  if (kind === 'valid') return 'Match'
-  if (kind === 'fraud') return 'No match'
-  return 'Too close to call'
-}
-
-function anchorTileClass(anchor) {
-  const kind = anchorKind(anchor)
-  if (kind === 'valid') return 'border-valid-border bg-valid-surface'
-  if (kind === 'fraud') return 'border-fraud-border bg-fraud-surface'
-  return 'border-borderline-border bg-borderline-surface border-dashed'
-}
-
-function anchorDotClass(anchor) {
-  const kind = anchorKind(anchor)
-  if (kind === 'valid') return 'bg-valid'
-  if (kind === 'fraud') return 'bg-fraud'
-  return 'bg-borderline'
+function anchorTheme(anchor) {
+  return ANCHOR_THEMES[anchor.band] ?? ANCHOR_THEMES.borderline
 }
 
 function anchorAlt(anchor) {
   const shared =
     anchor.count > 1 ? `, stored ${anchor.count} times as identical copies` : ''
-  return `Reference signature ${anchor.position} on file for this customer${shared}. ${anchorLabel(anchor)}, distance ${formatDistance(anchor.distance)}.`
+  return `Reference signature ${anchor.position} on file for this customer${shared}. ${anchorTheme(anchor).label}, distance ${formatDistance(anchor.distance)}.`
 }
 
 function toggleAnchor(anchor) {
@@ -651,7 +639,7 @@ async function reset() {
                is really being compared is to show it normalised, before it is sent. -->
           <div v-if="chosenRegion === 'whole' && wholePreview" class="mt-3 border-t border-border pt-3">
             <img
-              :src="'data:image/png;base64,' + wholePreview"
+              :src="pngSrc(wholePreview)"
               alt="The whole image as the model will read it"
               class="mx-auto max-h-40 w-auto rounded border border-border bg-surface"
             />
@@ -668,7 +656,7 @@ async function reset() {
           class="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-border bg-surface p-3"
         >
           <img
-            :src="'data:image/png;base64,' + regions[0].image"
+            :src="pngSrc(regions[0].image)"
             alt="The signature as it was cut out of the picture"
             class="h-12 w-20 shrink-0 rounded border border-border bg-surface object-contain"
           />
@@ -741,7 +729,7 @@ async function reset() {
                 </svg>
               </span>
               <img
-                :src="'data:image/png;base64,' + region.image"
+                :src="pngSrc(region.image)"
                 :alt="`Marking ${region.position} found in the image`"
                 class="h-20 w-full rounded bg-surface object-contain"
               />
@@ -878,18 +866,18 @@ async function reset() {
                   <button
                     type="button"
                     :aria-expanded="expandedAnchorKey === anchor.key"
-                    :class="anchorTileClass(anchor)"
+                    :class="anchorTheme(anchor).tile"
                     class="min-h-11 rounded-lg border-2 p-2 text-left transition-colors hover:brightness-95"
                     @click="toggleAnchor(anchor)"
                   >
                     <img
-                      :src="'data:image/png;base64,' + anchor.image"
+                      :src="pngSrc(anchor.image)"
                       :alt="anchorAlt(anchor)"
                       class="h-20 w-full rounded bg-surface object-contain"
                     />
                     <span class="mt-2 flex items-center gap-1.5">
-                      <span :class="anchorDotClass(anchor)" class="h-2 w-2 shrink-0 rounded-full"></span>
-                      <span class="text-xs font-semibold text-ink">{{ anchorLabel(anchor) }}</span>
+                      <span :class="anchorTheme(anchor).dot" class="h-2 w-2 shrink-0 rounded-full"></span>
+                      <span class="text-xs font-semibold text-ink">{{ anchorTheme(anchor).label }}</span>
                       <span v-if="anchor.count > 1" class="text-2xs text-ink-muted">
                         &times;{{ anchor.count }}
                       </span>
@@ -917,7 +905,7 @@ async function reset() {
                       </figure>
                       <figure>
                         <img
-                          :src="'data:image/png;base64,' + anchor.image"
+                          :src="pngSrc(anchor.image)"
                           :alt="anchorAlt(anchor)"
                           class="h-40 w-full rounded border border-border bg-surface object-contain"
                         />
@@ -932,13 +920,13 @@ async function reset() {
                         :style="{ left: scalePercent(result.threshold) }"
                       ></div>
                       <div
-                        :class="anchorDotClass(anchor)"
+                        :class="anchorTheme(anchor).dot"
                         class="absolute top-1/2 h-4 w-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-surface"
                         :style="{ left: scalePercent(anchor.distance) }"
                       ></div>
                     </div>
                     <p class="mt-3 text-sm text-ink">
-                      {{ anchorLabel(anchor) }}. Score {{ formatDistance(anchor.distance) }} against a
+                      {{ anchorTheme(anchor).label }}. Score {{ formatDistance(anchor.distance) }} against a
                       threshold of {{ formatDistance(result.threshold) }}, confidence
                       {{ formatConfidence(anchor.confidence) }}.
                     </p>

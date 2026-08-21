@@ -11,8 +11,8 @@ from backend.app.config import get_settings
 from backend.app.models_db import Customer, Organisation, ReferenceSignature
 from backend.app.repositories import feedback as feedback_repo
 from backend.app.repositories import verifications as verifications_repo
+from signature_core.decision import BORDERLINE_MARGIN, band
 
-BORDERLINE_MARGIN = 0.05
 BUCKET_WIDTH = 0.05
 BUCKET_COUNT = 20
 
@@ -38,7 +38,7 @@ def overview(db: Session) -> dict:
 
     distances = verifications_repo.all_distances(db)
     verdicts = verifications_repo.verdict_counts(db)
-    borderline = sum(1 for d in distances if abs(d - threshold) <= BORDERLINE_MARGIN)
+    borderline = sum(1 for d in distances if band(d, threshold) == "borderline")
 
     per_verdict = [{"verdict": verdict,
                     "count": verdicts.get(verdict, 0),
@@ -98,7 +98,7 @@ def feedback_queue(db: Session, status: str | None) -> list[dict]:
                 "distance": round(record.distance, 4),
                 "threshold_used": record.threshold_used,
                 "margin": round(record.distance - record.threshold_used, 4),
-                "borderline": abs(record.distance - record.threshold_used) <= BORDERLINE_MARGIN,
+                "band": band(record.distance, record.threshold_used),
                 "confidence": round(record.confidence, 1),
                 "created_at": record.created_at.isoformat(),
             },

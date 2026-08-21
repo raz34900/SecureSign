@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { get, postJson, del, ApiError } from '../api.js'
 import { formatDateTime } from '../format.js'
+import IssuedPassword from '../components/IssuedPassword.vue'
 
 const ORG_TYPES = [
   { value: 'financial', label: 'Financial institution', hint: 'Enrols customers' },
@@ -734,26 +735,13 @@ onMounted(async () => {
         </div>
 
         <!-- Shown once and never retrievable: the hash is all that is stored. -->
-        <div
+        <IssuedPassword
           v-if="issuedPassword"
-          class="rounded-lg border-2 border-brand-green bg-valid-surface p-4 space-y-2"
-        >
-          <p class="text-sm font-semibold text-ink">
-            One-time password for {{ issuedPassword.username }} ({{ issuedPassword.org_code }})
-          </p>
-          <code class="block select-all rounded bg-surface px-3 py-2 font-mono text-lg tracking-wider text-ink">{{ issuedPassword.password }}</code>
-          <p class="text-xs text-ink-muted">
-            Give this to them directly. It is shown once, cannot be looked up again, and
-            must be replaced by the owner before the account can do anything.
-          </p>
-          <button
-            type="button"
-            class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm font-medium text-navy"
-            @click="issuedPassword = null"
-          >
-            Done
-          </button>
-        </div>
+          :username="issuedPassword.username"
+          :password="issuedPassword.password"
+          :org-code="issuedPassword.org_code"
+          @done="issuedPassword = null"
+        />
 
         <p v-if="userError" class="text-sm text-danger">{{ userError }}</p>
         <p v-if="userNotice" class="text-sm text-valid font-medium">{{ userNotice }}</p>

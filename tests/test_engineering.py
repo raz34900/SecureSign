@@ -70,7 +70,7 @@ def test_feedback_queue_carries_the_score_but_not_the_customer(client, seeded):
     assert report["claimed_label"] == "forged"
     assert report["verification"]["verdict"] in {"VALID", "FRAUD"}
     assert 0.0 <= report["verification"]["distance"]
-    assert isinstance(report["verification"]["borderline"], bool)
+    assert report["verification"]["band"] in ("valid", "fraud", "borderline")
 
     body = json.dumps(report)
     assert CUSTOMER_NAME not in body and NATIONAL_ID not in body

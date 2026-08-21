@@ -20,7 +20,7 @@ from backend.app.repositories import verifications as verifications_repo
 from backend.app.security import envelope
 from backend.app.security.crypto import blind_index
 from signature_core.cleanup import pad_for_rotation
-from signature_core.decision import calculate_confidence, decide
+from signature_core.decision import band, calculate_confidence, decide
 from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.quality import validate_image_quality
 
@@ -209,7 +209,7 @@ def _reference_views(db: Session, refs: list[ReferenceSignature], distances: lis
         views.append({"reference_id": ref.id,
                       "image_png_base64": image,
                       "distance": round(distance, 4),
-                      "passed": distance < threshold,
+                      "band": band(distance, threshold),
                       "confidence": round(calculate_confidence(distance, threshold), 1)})
     return views
 
@@ -268,6 +268,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         "request_id": row.id,
         "national_id": national_id,
         "verdict": result.verdict,
+        "band": result.band,
         "distance": round(result.distance, 4),
         "threshold": result.threshold,
         "confidence": round(result.confidence, 1),
