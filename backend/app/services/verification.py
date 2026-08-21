@@ -2,14 +2,18 @@
 import base64
 import io
 import logging
+import os
+import time
+from datetime import UTC, datetime, timedelta
 
 import numpy as np
 from PIL import Image, ImageOps
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
 from backend.app.errors import AppError
-from backend.app.models_db import ReferenceSignature
+from backend.app.models_db import ReferenceSignature, Verification
 from backend.app.repositories import audit, customers as customers_repo, references as references_repo
 from backend.app.repositories import verifications as verifications_repo
 from backend.app.security.crypto import blind_index
@@ -21,6 +25,110 @@ from signature_core.quality import validate_image_quality
 log = logging.getLogger("securesign")
 
 
+# Where the compared image is kept, and for how long. The verdict is permanent; the
+# picture behind it is not. Ninety days is a review window for a clerk looking back at a
+# result that now looks odd, not an archive of everyone's signature.
+QUERY_IMAGE_DIR = "data/verification_queries"
+QUERY_IMAGE_RETENTION_DAYS = 90
+
+
+def normalised_png(query_img: Image.Image) -> bytes:
+    """The 224x224 the model compared, as bytes. About 4 KB.
+
+    Deliberately this and not the uploaded photograph. It is what produced the distance,
+    so it is what answers "does that signature look wrong"; and it carries no background,
+    no desk and no document, so storing it retains far less about the person than keeping
+    the original frame would.
+    """
+    normalised = UnifiedSignatureTransform()(pad_for_rotation(query_img))
+    buffer = io.BytesIO()
+    ImageOps.invert(normalised.convert("L")).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def store_query_image(verification_id: str, query_img: Image.Image,
+                      directory: str | None = None) -> str | None:
+    """Best effort: a verdict must never fail to be recorded because a disk write did.
+
+    Resolved at call time, not bound as a default: a default argument captures the module
+    value at import, so a test redirecting the directory would still be writing into the
+    real one.
+    """
+    try:
+        directory = directory or QUERY_IMAGE_DIR
+        os.makedirs(directory, exist_ok=True)
+        path = os.path.join(directory, f"{verification_id}.png")
+        with open(path, "wb") as handle:
+            handle.write(normalised_png(query_img))
+        return path
+    except OSError:
+        log.warning("could not store the compared image for verification %s", verification_id)
+        return None
+
+
+def purge_expired_query_images(db: Session, *, days: int = QUERY_IMAGE_RETENTION_DAYS) -> int:
+    """Drop compared images past their retention window, keeping the verdict rows.
+
+    The row stays and its picture goes: history remains complete and auditable, and the
+    registry stops holding a signature image it no longer has a reason to hold.
+    """
+    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
+    stale = db.execute(select(Verification).where(
+        Verification.query_image_path.is_not(None),
+        Verification.created_at < cutoff)).scalars().all()
+    for row in stale:
+        try:
+            os.remove(row.query_image_path)
+        except OSError:
+            pass  # already gone; the point is that the row stops pointing at it
+        row.query_image_path = None
+    if stale:
+        db.commit()
+        log.info("purged %d compared image(s) older than %d days", len(stale), days)
+    return len(stale)
+
+
+_last_purge = 0.0
+PURGE_INTERVAL_SECONDS = 60 * 60
+
+
+def purge_expired_query_images_occasionally(db: Session) -> None:
+    """Run the retention purge at most hourly, from ordinary traffic.
+
+    A cron job would be tidier, but this deployment is a single container with no
+    scheduler, and a retention rule that depends on someone remembering to run a script
+    is not a retention rule.
+    """
+    global _last_purge
+    now = time.monotonic()
+    if now - _last_purge < PURGE_INTERVAL_SECONDS:
+        return
+    _last_purge = now
+    try:
+        purge_expired_query_images(db)
+    except Exception:  # noqa: BLE001 - retention must never break reading history
+        log.exception("retention purge failed")
+
+
+def reference_views_for(db: Session, customer_id: str, threshold: float) -> list[dict]:
+    """The customer's reference signatures as they stand now.
+
+    Deliberately without per-reference distances: those were computed at the time and
+    never stored, and the reference set can have changed since - an institution may have
+    added or removed signatures. Showing today's images beside a distance from months ago
+    would invite reading one as the cause of the other.
+    """
+    views = []
+    for ref in references_repo.all_for(db, customer_id):
+        try:
+            with Image.open(ref.image_path) as stored:
+                views.append({"reference_id": ref.id,
+                              "image_png_base64": query_preview(stored.convert("L"))})
+        except OSError:
+            continue
+    return views
+
+
 def query_preview(query_img: Image.Image) -> str:
     """The normalised image the comparison actually ran on.
 
@@ -29,10 +137,7 @@ def query_preview(query_img: Image.Image) -> str:
     This is the same deterministic transform the embedder applies, so it is exactly
     what was compared, and a bad capture is obvious at a glance.
     """
-    normalised = UnifiedSignatureTransform()(pad_for_rotation(query_img))
-    buffer = io.BytesIO()
-    ImageOps.invert(normalised.convert("L")).save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode()
+    return base64.b64encode(normalised_png(query_img)).decode()
 
 
 def _reference_views(refs: list[ReferenceSignature], distances: list[float],
@@ -105,6 +210,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
                                  threshold=result.threshold, confidence=result.confidence,
                                  model_version=settings.model_version)
     db.flush()
+    row.query_image_path = store_query_image(row.id, query_img)
     audit.write(db, user_id=user_id, org_id=org_id, action="verify",
                 resource_type="customer", resource_id=customer.id, outcome="allowed",
                 detail={"decision": result.verdict, "verification_id": row.id})

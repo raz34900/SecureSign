@@ -83,6 +83,10 @@ class Verification(Base):
     confidence: Mapped[float] = mapped_column(Float)
     model_version: Mapped[str] = mapped_column(String(40))
     created_at: Mapped[datetime] = mapped_column(default=_now)
+    # The normalised 224x224 the model actually compared, not the photograph submitted.
+    # Nullable: rows predating this, and rows whose image has passed its retention window,
+    # keep their verdict and lose only the picture.
+    query_image_path: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
 class AuditLog(Base):

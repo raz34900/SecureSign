@@ -7,15 +7,15 @@ request, so there is no parameter an administrator could point at a different
 institution. A user id belonging to another organisation reads as not found rather than
 forbidden, so the endpoint cannot be used to discover which ids exist.
 """
-from typing import Literal
+from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from backend.app.auth.deps import CurrentUser, get_db, require_roles
 from backend.app.repositories import audit
-from backend.app.routers.accounts import ActiveFlag, NewPassword
+from backend.app.routers.accounts import ActiveFlag, ChangeRole, NewPassword
 from backend.app.routers.auth import Username
 from backend.app.services import accounts
 
@@ -32,10 +32,28 @@ class NewColleague(BaseModel):
 
 @router.get("/users")
 def users(db: Session = Depends(get_db),
-          user: CurrentUser = Depends(require_roles("org_admin"))) -> dict:
+          user: CurrentUser = Depends(require_roles("org_admin")),
+          q: Annotated[str | None, Query(max_length=80)] = None,
+          limit: Annotated[int, Query(ge=1, le=accounts.MAX_PAGE)] = accounts.DEFAULT_PAGE,
+          offset: Annotated[int, Query(ge=0)] = 0) -> dict:
     return {"organisation": {"code": user.org_code, "name": user.org_name,
                              "type": user.org_type},
-            "users": accounts.list_users(db, scope_org_id=user.org_id)}
+            "users": accounts.list_users(db, scope_org_id=user.org_id, search=q,
+                                         limit=limit, offset=offset),
+            "total": accounts.count_users(db, scope_org_id=user.org_id, search=q),
+            "limit": limit, "offset": offset}
+
+
+@router.post("/users/{user_id}/role")
+def change_role(user_id: str, body: ChangeRole, db: Session = Depends(get_db),
+                user: CurrentUser = Depends(require_roles("org_admin"))) -> dict:
+    """Scoped to the caller's own organisation, and never to the engineer role."""
+    result = accounts.set_user_role(db, user_id=user_id, role=body.role,
+                                    acting_user_id=user.user_id, scope_org_id=user.org_id)
+    audit.write(db, user_id=user.user_id, org_id=user.org_id, action="change_role",
+                resource_type="user", resource_id=user_id, outcome="allowed",
+                detail={"from": result["previous_role"], "to": result["role"]})
+    return result
 
 
 @router.post("/users")

@@ -38,6 +38,9 @@ def app(session_factory, monkeypatch, tmp_path):
 
     import backend.app.routers.customers as customers_router_module
     customers_router_module.SAMPLES_DIR = str(tmp_path / "samples")
+    from backend.app.services import verification as verification_module
+    monkeypatch.setattr(verification_module, "QUERY_IMAGE_DIR",
+                        str(tmp_path / "queries"))
     from backend.app.services import enrolment as enrolment_service
     enrolment_service._store.clear()
 

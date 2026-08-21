@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from backend.app.config import get_settings
 from backend.app.db import Base, make_engine, make_session_factory
+from backend.app import migrate
 from backend.app.errors import install_error_handlers
 from backend.app import models_db  # noqa: F401  - registers ORM tables
 
@@ -21,6 +22,7 @@ def create_app(session_factory=None, embedder=None) -> FastAPI:
                 raise RuntimeError("SS_PII_ENC_KEY / SS_PII_INDEX_KEY must be 32-byte hex strings")
         engine = make_engine(settings.database_url)
         Base.metadata.create_all(engine)
+        migrate.apply(engine)
         session_factory = make_session_factory(engine)
     if embedder is None:
         from signature_core.embed import Embedder
