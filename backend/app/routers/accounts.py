@@ -24,18 +24,15 @@ class NewOrganisation(BaseModel):
 
 
 class NewUser(BaseModel):
+    # No password field on purpose. The first password is generated and returned once, so
+    # whoever creates the account cannot choose what it opens with.
     org_code: OrgCode
     username: Username
     role: Literal["clerk", "verifier", "org_admin", "engineer"]
-    password: str
 
 
 class ActiveFlag(BaseModel):
     is_active: bool
-
-
-class NewPassword(BaseModel):
-    password: str
 
 
 class RenameOrganisation(BaseModel):
@@ -111,9 +108,9 @@ def users(db: Session = Depends(get_db),
 @router.post("/users")
 def add_user(body: NewUser, db: Session = Depends(get_db),
              user: CurrentUser = Depends(require_roles("engineer"))) -> dict:
-    """The password is never echoed back, and only its hash is stored."""
+    """Returns the generated one-time password once. Only its hash is stored."""
     created = accounts.create_user(db, org_code=body.org_code, username=body.username,
-                                   role=body.role, password=body.password)
+                                   role=body.role)
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="create_user",
                 resource_type="user", resource_id=created["user_id"], outcome="allowed",
                 detail={"org_code": body.org_code, "role": body.role})
@@ -132,9 +129,9 @@ def set_user_active(user_id: str, body: ActiveFlag, db: Session = Depends(get_db
 
 
 @router.post("/users/{user_id}/password")
-def reset_password(user_id: str, body: NewPassword, db: Session = Depends(get_db),
+def reset_password(user_id: str, db: Session = Depends(get_db),
                    user: CurrentUser = Depends(require_roles("engineer"))) -> dict:
-    result = accounts.set_password(db, user_id=user_id, password=body.password)
+    result = accounts.set_password(db, user_id=user_id)
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="reset_password",
                 resource_type="user", resource_id=user_id, outcome="allowed",
                 detail={"sessions_revoked": result["sessions_revoked"]})

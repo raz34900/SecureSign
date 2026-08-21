@@ -146,7 +146,7 @@ def test_the_account_list_is_paged_and_reports_a_total(client, seeded):
     enter_panel(client)
     for index in range(12):
         client.post("/admin/users", json={"org_code": "BA11", "username": f"temp{index}",
-                                          "role": "clerk", "password": STRONG})
+                                          "role": "clerk"})
 
     first = client.get("/admin/users?limit=5").json()
     assert len(first["users"]) == 5
@@ -163,7 +163,7 @@ def test_the_account_list_is_paged_and_reports_a_total(client, seeded):
 def test_accounts_can_be_searched(client, seeded):
     enter_panel(client)
     client.post("/admin/users", json={"org_code": "BA11", "username": "findme",
-                                      "role": "clerk", "password": STRONG})
+                                      "role": "clerk"})
 
     by_name = client.get("/admin/users?q=findme").json()
     assert [u["username"] for u in by_name["users"]] == ["findme"]

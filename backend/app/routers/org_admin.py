@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.auth.deps import CurrentUser, get_db, require_roles
 from backend.app.repositories import audit
-from backend.app.routers.accounts import ActiveFlag, ChangeRole, NewPassword
+from backend.app.routers.accounts import ActiveFlag, ChangeRole
 from backend.app.routers.auth import Username
 from backend.app.services import accounts
 
@@ -27,7 +27,6 @@ class NewColleague(BaseModel):
     # "engineer" is absent by design: that role belongs to the operator, and no
     # institution may mint an account that reaches the engineering panel.
     role: Literal["clerk", "verifier", "org_admin"]
-    password: str
 
 
 @router.get("/users")
@@ -61,7 +60,7 @@ def add_user(body: NewColleague, db: Session = Depends(get_db),
              user: CurrentUser = Depends(require_roles("org_admin"))) -> dict:
     # org_code comes from the session, so a colleague can only ever land in this org.
     created = accounts.create_user(db, org_code=user.org_code, username=body.username,
-                                   role=body.role, password=body.password,
+                                   role=body.role,
                                    scope_org_id=user.org_id)
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="create_user",
                 resource_type="user", resource_id=created["user_id"], outcome="allowed",
@@ -81,9 +80,9 @@ def set_user_active(user_id: str, body: ActiveFlag, db: Session = Depends(get_db
 
 
 @router.post("/users/{user_id}/password")
-def reset_password(user_id: str, body: NewPassword, db: Session = Depends(get_db),
+def reset_password(user_id: str, db: Session = Depends(get_db),
                    user: CurrentUser = Depends(require_roles("org_admin"))) -> dict:
-    result = accounts.set_password(db, user_id=user_id, password=body.password,
+    result = accounts.set_password(db, user_id=user_id,
                                    scope_org_id=user.org_id)
     audit.write(db, user_id=user.user_id, org_id=user.org_id, action="reset_password",
                 resource_type="user", resource_id=user_id, outcome="allowed",

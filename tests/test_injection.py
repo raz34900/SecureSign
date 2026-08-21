@@ -84,7 +84,7 @@ def test_a_search_finds_a_name_that_contains_a_wildcard(client, seeded):
     client.post("/admin/organisations",
                 json={"code": "PCT1", "name": "100% Credit Union", "type": "subscriber"})
     client.post("/admin/users", json={"org_code": "PCT1", "username": "pctuser",
-                                      "role": "verifier", "password": STRONG})
+                                      "role": "verifier"})
 
     found = client.get("/admin/users", params={"q": "100% Credit"}).json()
     assert [u["username"] for u in found["users"]] == ["pctuser"]

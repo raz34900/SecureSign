@@ -39,7 +39,9 @@ const orgError = ref('')
 const orgNotice = ref('')
 const orgSaving = ref(false)
 
-const userForm = ref({ org_code: '', username: '', role: 'clerk', password: '' })
+const userForm = ref({ org_code: '', username: '', role: 'clerk' })
+/* Shown once, after creation or a reset. Nobody can look it up again. */
+const issuedPassword = ref(null)
 const userError = ref('')
 const userNotice = ref('')
 const userSaving = ref(false)
@@ -64,8 +66,7 @@ const orgFormValid = computed(
 const userFormValid = computed(
   () => !!userForm.value.org_code
     && /^[a-z0-9][a-z0-9._-]{2,79}$/.test(userForm.value.username.trim())
-    && availableRoles.value.includes(userForm.value.role)
-    && userForm.value.password.length >= MIN_PASSWORD_LENGTH,
+    && availableRoles.value.includes(userForm.value.role),
 )
 
 /* Which roles this account could hold, given the type of organisation it belongs to.
@@ -195,10 +196,11 @@ async function createUser() {
       org_code: userForm.value.org_code,
       username: userForm.value.username.trim(),
       role: userForm.value.role,
-      password: userForm.value.password,
     })
-    userNotice.value = `${created.username} created in ${created.org_code}. Give them the password you set; it cannot be shown again.`
-    userForm.value = { org_code: '', username: '', role: 'clerk', password: '' }
+    userNotice.value = ''
+    issuedPassword.value = { username: created.username, org_code: created.org_code,
+                             password: created.initial_password }
+    userForm.value = { org_code: '', username: '', role: 'clerk' }
     await loadAll()
   } catch (err) {
     userError.value = err.message || 'Failed to create the user.'
@@ -218,25 +220,23 @@ async function setUserActive(row, isActive) {
 }
 
 const resettingId = ref('')
-const resetPassword = ref('')
 const confirmingDeleteUser = ref('')
 const confirmingDeleteOrg = ref('')
 
 function startReset(row) {
   resettingId.value = resettingId.value === row.user_id ? '' : row.user_id
-  resetPassword.value = ''
   userError.value = ''
   userNotice.value = ''
 }
 
 async function submitReset(row) {
-  if (resetPassword.value.length < MIN_PASSWORD_LENGTH) return
   userError.value = ''
   try {
-    await postJson(`/admin/users/${row.user_id}/password`, { password: resetPassword.value })
-    userNotice.value = `${row.username}'s password was reset. They were signed out everywhere and must choose their own.`
+    const result = await postJson(`/admin/users/${row.user_id}/password`, {})
+    userNotice.value = ''
+    issuedPassword.value = { username: row.username, org_code: row.org_code,
+                             password: result.initial_password }
     resettingId.value = ''
-    resetPassword.value = ''
     await loadAll()
   } catch (err) {
     userError.value = err.message || 'Failed to reset the password.'
@@ -371,13 +371,7 @@ onMounted(async () => {
                     >
                       {{ confirmingDeleteOrg === org.code ? 'Cancel' : 'Delete' }}
                     </button>
-                    <span
-                      v-else
-                      class="min-h-11 inline-flex items-center px-2 text-xs text-ink-subtle"
-                      title="Disable it instead: sign-in is blocked and the records are kept."
-                    >
-                      Cannot delete — {{ (org.blockers || []).join(', ') }}
-                    </span>
+
                     <button
                       v-if="confirmingDeleteOrg === org.code"
                       type="button"
@@ -559,15 +553,7 @@ onMounted(async () => {
                     >
                       {{ confirmingDeleteUser === row.user_id ? 'Cancel' : 'Delete' }}
                     </button>
-                    <!-- "Has history" told the reader nothing. The server already knows
-                         exactly what is in the way, so say it. -->
-                    <span
-                      v-else
-                      class="min-h-11 inline-flex items-center px-2 text-xs text-ink-subtle"
-                      :title="`Deleting this account would break the audit trail. Disable it instead.`"
-                    >
-                      Cannot delete — {{ (row.blockers || []).join(', ') || 'has history' }}
-                    </span>
+
                     <button
                       v-if="confirmingDeleteUser === row.user_id"
                       type="button"
@@ -579,20 +565,16 @@ onMounted(async () => {
                   </div>
 
                   <div v-if="resettingId === row.user_id" class="mt-2 flex flex-wrap gap-2 items-center">
-                    <input
-                      v-model="resetPassword"
-                      type="password"
-                      autocomplete="new-password"
-                      :placeholder="`At least ${MIN_PASSWORD_LENGTH} characters`"
-                      class="min-w-[14rem] min-h-11 rounded-lg border border-border-strong bg-surface text-ink px-3 py-2 text-sm"
-                    />
+                    <p class="text-xs text-ink-muted">
+                      A new one-time password will be generated and shown once.
+                      {{ row.username }} is signed out everywhere and must choose their own.
+                    </p>
                     <button
                       type="button"
-                      :disabled="resetPassword.length < MIN_PASSWORD_LENGTH"
-                      class="min-h-11 rounded-lg bg-navy px-4 text-sm font-semibold text-ink-inverse disabled:opacity-50"
+                      class="min-h-11 rounded-lg bg-navy px-4 text-sm font-semibold text-ink-inverse"
                       @click="submitReset(row)"
                     >
-                      Set password
+                      Reset and show password
                     </button>
                   </div>
                 </td>
@@ -625,6 +607,28 @@ onMounted(async () => {
               Next
             </button>
           </div>
+        </div>
+
+        <!-- Shown once and never retrievable: the hash is all that is stored. -->
+        <div
+          v-if="issuedPassword"
+          class="rounded-lg border-2 border-brand-green bg-valid-surface p-4 space-y-2"
+        >
+          <p class="text-sm font-semibold text-ink">
+            One-time password for {{ issuedPassword.username }} ({{ issuedPassword.org_code }})
+          </p>
+          <code class="block select-all rounded bg-surface px-3 py-2 font-mono text-lg tracking-wider text-ink">{{ issuedPassword.password }}</code>
+          <p class="text-xs text-ink-muted">
+            Give this to them directly. It is shown once, cannot be looked up again, and
+            must be replaced by the owner before the account can do anything.
+          </p>
+          <button
+            type="button"
+            class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm font-medium text-navy"
+            @click="issuedPassword = null"
+          >
+            Done
+          </button>
         </div>
 
         <p v-if="userError" class="text-sm text-danger">{{ userError }}</p>
@@ -663,16 +667,6 @@ onMounted(async () => {
             >
               <option v-for="role in availableRoles" :key="role" :value="role">{{ role }}</option>
             </select>
-          </label>
-          <label class="block">
-            <span class="block text-sm font-medium text-ink mb-1">Initial password</span>
-            <input
-              v-model="userForm.password"
-              type="password"
-              autocomplete="new-password"
-              :placeholder="`At least ${MIN_PASSWORD_LENGTH} characters`"
-              class="w-full min-h-11 rounded-lg border border-border-strong bg-surface text-ink px-3 py-2"
-            />
           </label>
           <button
             type="submit"
