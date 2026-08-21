@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import BrandMark from './BrandMark.vue'
 import {
@@ -10,6 +10,7 @@ const route = useRoute()
 const router = useRouter()
 
 const showNav = computed(() => route.path !== '/login')
+const mobileNavOpen = ref(false)
 
 // While a handed-out password is still in force nothing else is reachable, so offering
 // the links would only produce bounces.
@@ -37,6 +38,8 @@ const links = computed(() => {
   return isOrgAdmin.value ? [...forRole, { to: '/team', label: 'Team' }] : forRole
 })
 
+watch(() => route.path, () => { mobileNavOpen.value = false })
+
 async function handleLogout() {
   await logout()
   router.push('/login')
@@ -44,58 +47,75 @@ async function handleLogout() {
 </script>
 
 <template>
-  <div class="min-h-screen">
-    <nav v-if="showNav" class="bg-navy text-ink-inverse">
-      <div
-        class="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-1 px-4 py-2 sm:px-6"
-      >
+  <div v-if="!showNav">
+    <router-view />
+  </div>
+
+  <div v-else class="min-h-screen lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
+    <!-- A persistent rail, so content keeps the whole remaining width instead of sitting
+         in a centred column with the screen empty on either side of it. -->
+    <aside class="flex flex-col bg-navy text-ink-inverse lg:sticky lg:top-0 lg:h-screen">
+      <div class="flex items-center justify-between gap-3 px-4 py-3 lg:px-5 lg:py-4">
         <span class="flex items-center gap-2.5">
-          <BrandMark :size="22" class="shrink-0" />
-          <span class="text-lg font-semibold tracking-tight">SecureSign</span>
+          <BrandMark :size="20" class="shrink-0" />
+          <span class="text-base font-semibold tracking-tight">SecureSign</span>
         </span>
-
-        <div
-          class="order-last -mx-1 flex w-full items-center gap-1 overflow-x-auto sm:order-none sm:mx-0 sm:w-auto"
+        <button
+          type="button"
+          class="min-h-11 rounded px-2 text-sm text-white/80 lg:hidden"
+          :aria-expanded="mobileNavOpen"
+          aria-label="Navigation"
+          @click="mobileNavOpen = !mobileNavOpen"
         >
-          <router-link
-            v-for="link in links"
-            :key="link.to"
-            :to="link.to"
-            class="min-h-11 shrink-0 rounded px-3 py-2 text-sm font-medium text-white/85 transition-colors hover:bg-white/10 hover:text-white flex items-center"
-            active-class="bg-white/12 text-white shadow-[inset_0_-2px_0_0_var(--color-brand-green)]"
-          >
-            {{ link.label }}
-          </router-link>
-        </div>
+          {{ mobileNavOpen ? 'Close' : 'Menu' }}
+        </button>
+      </div>
 
-        <div class="ml-auto flex items-center gap-3">
-          <span class="hidden text-right leading-tight sm:block">
-            <span class="block text-sm font-medium">{{ state.user?.org_name }}</span>
-            <span class="block text-xs text-white/70">
-              {{ state.user?.username }}
-              <span v-if="state.user?.org_code" class="font-mono">({{ state.user.org_code }})</span>
-            </span>
-          </span>
-          <span class="text-sm text-white/80 sm:hidden">{{ state.user?.username }}</span>
+      <nav
+        class="flex-1 gap-0.5 px-2 pb-2 lg:flex lg:flex-col lg:px-3"
+        :class="mobileNavOpen ? 'flex flex-col' : 'hidden'"
+      >
+        <router-link
+          v-for="link in links"
+          :key="link.to"
+          :to="link.to"
+          class="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
+          active-class="bg-white/12 text-white"
+        >
+          {{ link.label }}
+        </router-link>
+      </nav>
+
+      <!-- Whose data is on screen, at the foot of the rail where it stays in view. -->
+      <div
+        class="border-t border-white/12 px-4 py-3 lg:px-5"
+        :class="mobileNavOpen ? 'block' : 'hidden lg:block'"
+      >
+        <p class="truncate text-sm font-medium">{{ state.user?.org_name }}</p>
+        <p class="truncate text-xs text-white/55">
+          {{ state.user?.username }}
+          <span v-if="state.user?.org_code" class="tabular">({{ state.user.org_code }})</span>
+        </p>
+        <div class="mt-2 flex gap-1">
           <router-link
             v-if="!mustChangePassword"
             :to="{ name: 'change-password', query: { voluntary: '1' } }"
-            class="min-h-11 hidden items-center rounded px-3 text-sm font-medium text-white/85 hover:bg-white/10 hover:text-white sm:flex"
+            class="flex min-h-11 flex-1 items-center rounded-md px-2 text-xs font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
           >
             Password
           </router-link>
           <button
-            class="min-h-11 rounded border border-white/25 px-4 text-sm font-medium text-white/90 transition-colors hover:bg-white/10 hover:text-white"
+            type="button"
+            class="min-h-11 rounded-md px-2 text-xs font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
             @click="handleLogout"
           >
-            Logout
+            Sign out
           </button>
         </div>
       </div>
-    </nav>
+    </aside>
 
-    <router-view v-if="!showNav" />
-    <main v-else class="mx-auto max-w-5xl px-4 py-8 sm:px-6">
+    <main class="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
       <router-view />
     </main>
   </div>

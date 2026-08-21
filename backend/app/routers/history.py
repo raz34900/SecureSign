@@ -13,7 +13,7 @@ from backend.app.repositories import audit, customers as customers_repo
 from backend.app.repositories import feedback as feedback_repo
 from backend.app.repositories import verifications as verifications_repo
 from backend.app.services import accounts, verification
-from signature_core.decision import band
+from signature_core.decision import BORDERLINE_MARGIN, band
 from backend.app.security.crypto import blind_index, decrypt_pii
 
 router = APIRouter(tags=["history"])
@@ -138,6 +138,7 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
         "request_id": record.id,
         "verdict": record.decision,
         "band": band(record.distance, record.threshold_used),
+        "borderline_margin": BORDERLINE_MARGIN,
         "distance": record.distance,
         "threshold_used": record.threshold_used,
         "confidence": record.confidence,
