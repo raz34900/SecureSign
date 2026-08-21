@@ -197,13 +197,9 @@ def _reference_views(db: Session, refs: list[ReferenceSignature], distances: lis
         raw = reference_image_bytes(ref, dek)
         if raw is None:
             continue  # unreadable or erased: skip, never 500 the whole verification
-        # Through the same transform as the query, not the stored crop. Enrolment keeps
-        # a flattened photograph, which carries the paper's grain; the query is shown
-        # normalised. Side by side that reads as the reference having skipped
-        # preparation, and it has not — Otsu removes the grain and the model never sees
-        # it. Showing the two at different stages of the same pipeline invites exactly
-        # the wrong conclusion, so show both at the stage that decided the number
-        # underneath them.
+        # Through the same transform as the query, not the stored crop. Otsu removes the
+        # paper grain the model never sees, so showing the two at different stages of one
+        # pipeline reads as the reference having skipped preparation.
         with Image.open(io.BytesIO(raw)) as stored:
             image = query_preview(stored.convert("L"))
         views.append({"reference_id": ref.id,

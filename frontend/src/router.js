@@ -34,11 +34,9 @@ const router = createRouter({
 })
 
 /**
- * Redirecting somewhere we are already going cannot resolve anything — it just runs the
- * guard again on the same path, which freezes the tab. If that ever happens the routing
- * rules disagree with each other, and letting the view render is by far the lesser
- * failure: the server authorises every request independently, so at worst the page shows
- * an error instead of the browser locking up.
+ * Redirecting to where we already are just runs the guard again and freezes the tab. If
+ * the routing rules ever disagree, rendering the view is the lesser failure — the server
+ * authorises every request independently, so at worst the page shows an error.
  */
 function redirect(path, to) {
   return path === to.path ? true : { path }

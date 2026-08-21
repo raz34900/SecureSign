@@ -3,12 +3,11 @@
 This runs before `UnifiedSignatureTransform`, never inside it: the transform is
 shared with training, and changing it would break train/serve parity.
 
-A region cut from a real document carries more than the signature. A cheque brings
-corner registration squares and a small reference number. Those survive binarisation,
-and because the transform crops tightly around every remaining mark, they inflate the
-bounding box and leave the signature occupying a fraction of the model's 224x224
-input. Measured on a real cheque: the raw region scored 0.4696 (rejected) while the
-same signature with these marks removed scored 0.2350 (accepted).
+A region cut from a real document carries more than the signature — a cheque brings
+corner registration squares and a reference number, which survive binarisation and
+inflate the bounding box the transform crops to, leaving the signature a fraction of the
+224x224 input. Measured on a real cheque: 0.4696 raw (rejected), 0.2350 cleaned
+(accepted).
 """
 import math
 
@@ -44,21 +43,15 @@ def flatten_illumination(gray: np.ndarray) -> np.ndarray:
 def pad_for_rotation(img: Image.Image) -> Image.Image:
     """Give the deskew room to turn in, so it stops cutting the ends off the writing.
 
-    The transform deskews with a rotation about the centre into a canvas of the *same*
-    size, so whatever swings outside is discarded. A signature is wide and short and
-    written on a slant, which puts its first and last strokes exactly where the arc is
-    widest. Measured on four photographs: deskew angles of -12° to -13.5°, destroying
-    2.6% to 4.4% of the ink each time — the first letter came out looking like a
-    different character.
+    The transform rotates about the centre into a same-sized canvas, so whatever swings
+    outside is discarded — and a signature is wide, short and slanted, which puts its
+    first and last strokes where the arc is widest. Four photographs, deskew of -12° to
+    -13.5°, destroying 2.6% to 4.4% of the ink each time.
 
-    Padding out to a square of the diagonal means no rotation about the centre can move
-    ink outside the canvas. The transform crops tightly afterwards, so the padding
-    itself never reaches the model. Measured over the same four photographs of one
-    signature, mean distance fell from 0.2835 to 0.1828 and the worst pair from 0.4862
-    to 0.2711 — from one pair reading FRAUD to all six agreeing.
-
-    Both sides must be padded or neither: a reference and a query prepared differently
-    are not comparable.
+    Padding to a square of the diagonal means no centre rotation can push ink off canvas;
+    the tight crop afterwards keeps the padding away from the model. Over the same four
+    photographs mean distance fell 0.2835 to 0.1828 and the worst pair 0.4862 to 0.2711,
+    from one pair reading FRAUD to all six agreeing. Both sides must be padded or neither.
     """
     side = math.ceil(math.hypot(*img.size))
     padded = Image.new("L", (side, side), PAPER)
@@ -151,14 +144,10 @@ def isolate_signature_ink(img: Image.Image,
 def candidate_crops(image_bytes: bytes) -> list[Image.Image]:
     """Every region of a photograph that could be a signature, prepared for the model.
 
-    Enrolment and verification both need this, and CLAUDE.md requires them to prepare
-    images identically — a reference and a query prepared differently are not comparable.
-    Written out twice, that rule was enforced by hope; here it is enforced by there being
-    one copy.
-
-    Flatten first: extraction thresholds globally and cannot see past a shadow. Then drop
-    what cannot be handwriting, because the dark edge of a photographed page extracts as a
-    region like any other.
+    One copy, because enrolment and verification must prepare images identically — a
+    reference and a query prepared differently are not comparable. Flatten first:
+    extraction thresholds globally and cannot see past a shadow. Then drop what cannot be
+    handwriting, because a photographed page's dark edge extracts like any other region.
     """
     even = flatten_image_bytes(image_bytes)
     return [crop for crop in (isolate_signature_ink(region)

@@ -1,23 +1,14 @@
 """Envelope encryption for signature images.
 
-Every customer gets a data encryption key of their own. The image is encrypted under that
-key; the key itself is stored only in a form encrypted under the key encryption key from
-the environment. Two consequences, and both are the reason for the extra layer:
+Each customer has a data encryption key; the image is encrypted under it, and that key is
+stored only wrapped by the key encryption key from the environment. The extra layer buys
+two things. Destroying one wrapped key erases that customer's signatures everywhere the
+ciphertext exists, backups included. And moving the key encryption key — one day into a
+KMS — rewraps a few short keys instead of rewriting every image.
 
-**Erasure that reaches backups.** Destroy one customer's wrapped key and their signatures
-become unrecoverable everywhere that ciphertext exists, including in tapes nobody can
-reach to edit. A shared registry that several institutions write to has no other honest
-answer to a deletion request.
-
-**Rotation without re-encrypting anything.** Moving the key encryption key — to a new
-value, or one day to a KMS or an HSM — rewraps a few hundred small keys rather than
-rewriting every image. That property is the whole reason this pattern exists, and it is
-what makes the environment variable a starting point rather than a dead end.
-
-What it does not protect against is worth being just as clear about: the running process
-holds the key encryption key, so anything with code execution on the host reads
-everything. This defends a stolen dump, a stray backup, a file-read bug and an operator
-with database access but no shell — which is most of what actually happens — and not root.
+It does not survive code execution on the host, which holds the key encryption key. It
+defends a stolen dump, a stray backup, a file-read bug, and database access without a
+shell.
 """
 import os
 
