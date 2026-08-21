@@ -51,7 +51,7 @@ async function handleLogout() {
     <router-view />
   </div>
 
-  <div v-else class="min-h-screen lg:grid lg:grid-cols-[14rem_minmax(0,1fr)]">
+  <div v-else class="min-h-screen lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
     <!-- A persistent rail, so content keeps the whole remaining width instead of sitting
          in a centred column with the screen empty on either side of it. -->
     <aside class="flex flex-col bg-navy text-ink-inverse lg:sticky lg:top-0 lg:h-screen">
@@ -80,7 +80,7 @@ async function handleLogout() {
           :key="link.to"
           :to="link.to"
           class="flex min-h-11 items-center rounded-md px-3 text-sm font-medium text-white/75 transition-colors hover:bg-white/10 hover:text-white"
-          active-class="bg-white/12 text-white"
+          active-class="bg-white/12 font-semibold text-white"
         >
           {{ link.label }}
         </router-link>
