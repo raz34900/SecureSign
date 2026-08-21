@@ -383,7 +383,7 @@ onMounted(async () => {
                 <p class="tabular mt-1 text-2xl font-semibold text-navy">{{ verdictStat(verdict).count }}</p>
                 <p class="tabular mt-0.5 text-2xs text-ink-muted">
                   mean distance {{ formatDistance(verdictStat(verdict).mean_distance) }} ·
-                  mean confidence {{ formatConfidence(verdictStat(verdict).mean_confidence) }}
+                  mean similarity {{ formatConfidence(verdictStat(verdict).mean_confidence) }}
                 </p>
               </template>
               <p v-else class="mt-1 text-sm text-ink-subtle">No verifications yet.</p>
@@ -454,7 +454,7 @@ onMounted(async () => {
                 <th scope="col" class="px-4 py-2.5 font-semibold">Report</th>
                 <th scope="col" class="px-4 py-2.5 text-right font-semibold">Distance</th>
                 <th scope="col" class="px-4 py-2.5 text-right font-semibold">From line</th>
-                <th scope="col" class="px-4 py-2.5 text-right font-semibold">Confidence</th>
+                <th scope="col" class="px-4 py-2.5 text-right font-semibold">Similarity</th>
                 <th scope="col" class="px-4 py-2.5 font-semibold">Reported by</th>
                 <th scope="col" class="px-4 py-2.5 font-semibold">Filed</th>
                 <th scope="col" class="px-4 py-2.5 font-semibold">Review</th>

@@ -336,7 +336,7 @@ onMounted(loadHistory)
                 <th scope="col" class="px-4 py-2 text-left font-semibold">Customer</th>
                 <th scope="col" class="px-4 py-2 text-left font-semibold">Verdict</th>
                 <th scope="col" class="px-4 py-2 text-right font-semibold">Distance</th>
-                <th scope="col" class="px-4 py-2 text-right font-semibold">Confidence</th>
+                <th scope="col" class="px-4 py-2 text-right font-semibold">Similarity</th>
                 <th scope="col" class="px-4 py-2 text-left font-semibold">Checked by</th>
                 <th scope="col" class="px-4 py-2 text-left font-semibold">When</th>
                 <th scope="col" class="px-4 py-2 text-left font-semibold">Report</th>
@@ -405,6 +405,7 @@ onMounted(loadHistory)
 
                 <tr v-if="expandedId === v.request_id">
                   <td colspan="8" class="bg-sunken px-4 py-4">
+                    <div class="sticky left-0 w-[calc(100vw-2rem)] max-w-full sm:w-[calc(100vw-3rem)] lg:w-auto">
                     <div class="space-y-4">
                       <p v-if="detailLoading" role="status" class="text-sm text-ink-muted">
                         Loading this result…
@@ -476,7 +477,7 @@ onMounted(loadHistory)
                               {{ formatDistance(detail.threshold_used) }}
                             </span>
                             <span class="tabular text-sm text-ink-muted">
-                              Confidence {{ formatConfidence(detail.confidence) }}
+                              Similarity {{ formatConfidence(detail.confidence) }}
                             </span>
                           </div>
                         </div>
@@ -600,6 +601,7 @@ onMounted(loadHistory)
                         </div>
                       </div>
                     </div>
+                  </div>
                   </td>
                 </tr>
               </template>
