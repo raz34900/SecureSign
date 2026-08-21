@@ -4,7 +4,7 @@ import { useRoute } from 'vue-router'
 import { get, postJson, postForm, ApiError } from '../api.js'
 import { assessCapture } from '../capture.js'
 import { save as saveWizard, load as loadWizard, clear as clearWizard } from '../enrolStorage.js'
-import { noticeClass } from '../format.js'
+import { noticeClass, pngSrc } from '../format.js'
 import CaptureGuide from '../components/CaptureGuide.vue'
 
 /** Most references a customer may hold. */
@@ -66,12 +66,17 @@ const cardPreviewUrl = ref('')
 const step2Error = ref(null) // { level: 'warning' | 'error', message }
 const step2Uploading = ref(false)
 const cardFileInput = ref(null)
+const cardCameraInput = ref(null)
+const dragging = ref(false)
 
 const captureNotice = ref(null) // { level: 'good' | 'warning' | 'error', title, message }
 
 function onFileSelected(e) {
   const file = e.target.files && e.target.files[0]
-  if (!file) return
+  if (file) selectCard(file)
+}
+
+function selectCard(file) {
   if (cardPreviewUrl.value) URL.revokeObjectURL(cardPreviewUrl.value)
   cardFile.value = file
   cardPreviewUrl.value = URL.createObjectURL(file)
@@ -85,6 +90,12 @@ async function assessFile(file) {
   const verdict = await assessCapture(file)
   if (cardFile.value !== file) return
   captureNotice.value = verdict
+}
+
+function onDrop(event) {
+  dragging.value = false
+  const file = event.dataTransfer?.files?.[0]
+  if (file) selectCard(file)
 }
 
 function reopenFilePicker() {
@@ -506,27 +517,46 @@ function connectorClass(n) {
         {{ cardGuidance }}
       </p>
 
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <label class="flex flex-col min-h-11 justify-center">
-          <span class="block text-sm font-medium text-ink-muted mb-1">Upload file</span>
-          <input
-            ref="cardFileInput"
-            type="file"
-            accept="image/*"
-            class="w-full text-sm"
-            @change="onFileSelected"
-          />
-        </label>
-        <label class="flex flex-col min-h-11 justify-center">
-          <span class="block text-sm font-medium text-ink-muted mb-1">Use camera</span>
-          <input
-            type="file"
-            accept="image/*"
-            capture="environment"
-            class="w-full text-sm"
-            @change="onFileSelected"
-          />
-        </label>
+      <!-- The default file control is the widget chrome this product replaced; the same
+           two targets Verify offers, so the two upload surfaces behave alike. -->
+      <input
+        ref="cardFileInput"
+        type="file"
+        accept="image/*"
+        class="sr-only"
+        @change="onFileSelected"
+      />
+      <input
+        ref="cardCameraInput"
+        type="file"
+        accept="image/*"
+        capture="environment"
+        class="sr-only"
+        @change="onFileSelected"
+      />
+      <div
+        class="grid grid-cols-1 gap-3 sm:grid-cols-2"
+        @dragover.prevent="dragging = true"
+        @dragleave.prevent="dragging = false"
+        @drop.prevent="onDrop"
+      >
+        <button
+          type="button"
+          class="min-h-11 rounded-lg border-2 border-dashed px-4 py-5 text-base transition-colors"
+          :class="dragging
+            ? 'border-navy bg-sunken text-navy'
+            : 'border-border-strong text-ink-muted hover:border-navy hover:text-navy'"
+          @click="cardFileInput?.click()"
+        >
+          {{ dragging ? 'Drop the photograph' : 'Choose a file' }}
+        </button>
+        <button
+          type="button"
+          class="min-h-11 rounded-lg border-2 border-dashed border-border-strong px-4 py-5 text-base text-ink-muted transition-colors hover:border-navy hover:text-navy"
+          @click="cardCameraInput?.click()"
+        >
+          Use the camera
+        </button>
       </div>
 
       <details class="rounded-lg border border-border bg-surface">
@@ -637,7 +667,7 @@ function connectorClass(n) {
         </button>
       </div>
 
-      <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <button
           v-for="crop in crops"
           :key="crop.crop_id"
@@ -645,7 +675,7 @@ function connectorClass(n) {
           type="button"
           :aria-pressed="crop.selected"
           class="relative flex flex-col items-center gap-2 rounded-lg border-2 p-2 min-h-11 text-left"
-          :class="crop.selected ? 'border-valid-border bg-valid-surface' : 'border-border bg-sunken'"
+          :class="crop.selected ? 'border-valid bg-valid-surface' : 'border-border bg-surface opacity-60 hover:opacity-100'"
           @click="toggleCrop(crop)"
         >
           <span
@@ -660,7 +690,11 @@ function connectorClass(n) {
           <span
             class="absolute top-1.5 left-1.5 flex h-5 min-w-5 items-center justify-center rounded-full border border-border-strong bg-surface px-1 text-2xs font-semibold text-ink"
           >{{ crop.position }}</span>
-          <img :src="'data:image/png;base64,' + crop.preview_png_base64" :alt="`Signature ${crop.position} found on the card`" class="w-full h-auto rounded" />
+          <img
+            :src="pngSrc(crop.preview_png_base64)"
+            :alt="`Signature ${crop.position} found on the card`"
+            class="h-28 w-full rounded bg-surface object-contain"
+          />
           <span class="text-2xs font-medium" :class="crop.selected ? 'text-valid' : 'text-ink-subtle'">
             {{ crop.selected ? 'Selected' : 'Not selected' }}
           </span>
