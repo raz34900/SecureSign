@@ -140,11 +140,28 @@ def _read_query_image(path: str | None) -> str | None:
 
 @router.post("/verifications/{verification_id}/feedback")
 def report_result(verification_id: str, body: FeedbackBody, db: Session = Depends(get_db),
-                  user: CurrentUser = Depends(require_roles("verifier", "clerk"))) -> dict:
-    """Flag a verification whose verdict the operator believes was wrong.
+                  user: CurrentUser = Depends(require_roles("clerk"))) -> dict:
+    """Flag a verification whose verdict the reporting institution believes was wrong.
 
-    The report is queued for the engineering team; it never changes the stored verdict,
-    so an institution cannot rewrite its own history or poison a decision after the fact.
+    Restricted to the enrolling side: the clerk role, and an org_admin at a financial
+    organisation, which is what `IMPLIED_ROLES` expands to clerk. No account at a
+    subscriber ever reaches it, and neither does a plain verifier at a bank — they hold
+    no reference set and enrolled nobody, so a claim about the model is not theirs to
+    file.
+
+    A subscriber is deliberately excluded, and the reason is incentive rather than trust
+    in the abstract. A merchant is paid whether or not the signature was genuine, and a
+    FRAUD verdict is what stands between them and the sale — so the cheapest correction
+    they can file is always "that fraud was fine". These reports are the engineering
+    team's ground truth for judging the model, so the one party with a standing reason to
+    misreport is the one party that must not be able to.
+
+    The bank carries the loss on a forgery it accepted, and holds the reference set the
+    decision was made against, so it is both motivated to report honestly and able to
+    check before it does.
+
+    The report never changes the stored verdict either way: it is a claim about a result,
+    not an amendment to it.
     """
     record = verifications_repo.get_for_org(db, verification_id, user.org_id)
     if record is None:
