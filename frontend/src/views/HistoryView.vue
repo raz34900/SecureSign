@@ -324,24 +324,19 @@ onMounted(loadHistory)
                     </p>
                   </div>
 
-                  <!-- Reporting belongs to the enrolling side. A merchant is paid either
-                       way and a FRAUD verdict is what stands between them and the sale, so
-                       the cheapest correction they could file is always "that fraud was
-                       fine" — and these reports are the engineering team's ground truth.
-                       The server refuses regardless; this keeps the form out of reach of
-                       someone who would only be told no. -->
-                  <div v-if="!isClerk" class="border-t border-border pt-3 text-sm text-ink-muted">
-                    Results are reported by the institution that holds this customer's
-                    reference signatures.
-                  </div>
+                  <!-- Reporting belongs to the enrolling side: a merchant is paid either
+                       way, so the cheapest correction they could file is always "that
+                       fraud was fine", and these reports are engineering's ground truth.
+                       Nothing is shown in place of the form — explaining the absence of a
+                       control the reader never saw only raises a question. -->
 
                   <!-- A result can only be reported once, so the form disappears
                        afterwards while the row itself stays open for reading. -->
-                  <div v-else-if="v.feedback" class="border-t border-border pt-3 text-sm text-ink-muted">
+                  <div v-if="isClerk && v.feedback" class="border-t border-border pt-3 text-sm text-ink-muted">
                     Reported as {{ v.feedback.claimed_label }} — {{ v.feedback.status }}.
                     A result cannot be reported twice.
                   </div>
-                  <div v-else class="max-w-xl space-y-3 border-t border-border pt-3">
+                  <div v-else-if="isClerk" class="max-w-xl space-y-3 border-t border-border pt-3">
                   <p class="text-sm text-ink">
                     The system decided <strong>{{ v.verdict }}</strong>. What was the truth?
                   </p>
