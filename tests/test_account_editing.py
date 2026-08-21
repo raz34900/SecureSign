@@ -5,6 +5,7 @@ organisation holds records - so a typo in a name was permanent.
 """
 from conftest import login
 from test_engineering import enter_panel
+from test_org_admin import owner_password
 
 STRONG = "correct-horse-battery"
 
@@ -102,7 +103,7 @@ def make_admin(client, org_code: str, username: str) -> None:
 def test_an_org_admin_promotes_inside_its_own_organisation(client, seeded):
     make_admin(client, "BA11", "boss1")
     client.cookies.clear()
-    login(client, "BA11", "boss1", password=f"{STRONG}-boss1")
+    login(client, "BA11", "boss1", password=owner_password("boss1"))
 
     clerk = next(u for u in client.get("/org/users").json()["users"]
                  if u["username"] == "clerk1")
@@ -114,7 +115,7 @@ def test_an_org_admin_promotes_inside_its_own_organisation(client, seeded):
 def test_an_org_admin_cannot_grant_the_engineer_role(client, seeded):
     make_admin(client, "BA11", "boss1")
     client.cookies.clear()
-    login(client, "BA11", "boss1", password=f"{STRONG}-boss1")
+    login(client, "BA11", "boss1", password=owner_password("boss1"))
 
     clerk = next(u for u in client.get("/org/users").json()["users"]
                  if u["username"] == "clerk1")
@@ -131,7 +132,7 @@ def test_an_org_admin_cannot_change_a_role_in_another_organisation(client, seede
 
     make_admin(client, "BA11", "boss1")
     client.cookies.clear()
-    login(client, "BA11", "boss1", password=f"{STRONG}-boss1")
+    login(client, "BA11", "boss1", password=owner_password("boss1"))
 
     # Not found, not forbidden: a scoped administrator must not learn the id exists.
     assert client.post(f"/org/users/{victim['user_id']}/role",
@@ -181,7 +182,7 @@ def test_accounts_can_be_searched(client, seeded):
 def test_an_org_admin_search_cannot_reach_another_organisation(client, seeded):
     make_admin(client, "BA11", "boss1")
     client.cookies.clear()
-    login(client, "BA11", "boss1", password=f"{STRONG}-boss1")
+    login(client, "BA11", "boss1", password=owner_password("boss1"))
 
     # A search naming the other organisation still returns only this one's accounts.
     body = client.get("/org/users?q=BB22").json()

@@ -237,7 +237,7 @@ def test_a_handed_out_password_blocks_everything_until_replaced(client, admin):
     assert blocked.json()["error"]["code"] == "PASSWORD_CHANGE_REQUIRED"
 
     r = client.post("/auth/password", json={"current_password": issued,
-                                            "new_password": "something-else-entirely"})
+                                            "new_password": "Something-Else-1"})
     assert r.status_code == 200, r.text
     assert client.get("/auth/me").json()["must_change_password"] is False
     assert client.get("/customers/lookup/123456789").status_code == 404  # handler reached
@@ -246,14 +246,14 @@ def test_a_handed_out_password_blocks_everything_until_replaced(client, admin):
 def test_changing_a_password_needs_the_current_one(client, seeded):
     login(client, "BA11", "clerk1")
     r = client.post("/auth/password", json={"current_password": "not-it",
-                                            "new_password": "a-long-enough-password"})
+                                            "new_password": "A-Long-Enough-1"})
     assert r.status_code == 401
 
 
 def test_a_new_password_must_be_long_and_different(client, seeded):
     login(client, "BA11", "clerk1")
     short = client.post("/auth/password", json={"current_password": "pw123456",
-                                                "new_password": "tiny"})
+                                                "new_password": "Ti1!"})
     assert short.json()["error"]["code"] == "WEAK_PASSWORD"
 
     same = client.post("/auth/password", json={"current_password": "pw123456",
@@ -343,7 +343,7 @@ def test_an_organisation_holding_customer_records_is_not_deleted(client, admin):
     client.cookies.clear()
     login(client, "NB77", "clerk7", password=issued)
     client.post("/auth/password", json={"current_password": issued,
-                                        "new_password": "something-else-entirely"})
+                                        "new_password": "Something-Else-1"})
     do_full_enrolment(client, "123456811")
 
     enter_panel(client)
