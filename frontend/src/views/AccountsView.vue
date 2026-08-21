@@ -23,6 +23,15 @@ const MIN_PASSWORD_LENGTH = 12
 const PAGE_SIZE = 25
 
 const organisations = ref([])
+const orgTotal = ref(0)
+const orgOffset = ref(0)
+const orgSearch = ref('')
+const orgTypeFilter = ref('')
+/* Every organisation, for the "add user" picker only. Separate from the paged table
+   because the picker must offer organisations that are not on the page being read.
+   Bounded by MAX_PAGE on the server; past that this needs a search-picker rather than a
+   dropdown, and it will be obvious because the list stops at 200. */
+const pickerOrganisations = ref([])
 const users = ref([])
 const userTotal = ref(0)
 const userOffset = ref(0)
@@ -46,10 +55,12 @@ const userError = ref('')
 const userNotice = ref('')
 const userSaving = ref(false)
 
-const activeOrganisations = computed(() => organisations.value.filter((org) => org.is_active))
+const activeOrganisations = computed(
+  () => pickerOrganisations.value.filter((org) => org.is_active),
+)
 
 const selectedOrgType = computed(
-  () => organisations.value.find((org) => org.code === userForm.value.org_code)?.type,
+  () => pickerOrganisations.value.find((org) => org.code === userForm.value.org_code)?.type,
 )
 
 const availableRoles = computed(() => {
@@ -72,9 +83,46 @@ const userFormValid = computed(
 /* Which roles this account could hold, given the type of organisation it belongs to.
    Mirrors the server, which is the authority and re-checks every change. */
 function rolesForOrgType(row) {
-  const type = organisations.value.find((org) => org.code === row.org_code)?.type
-  if (!type) return [row.role]
-  return Object.keys(ROLE_ORG_TYPES).filter((role) => ROLE_ORG_TYPES[role].includes(type))
+  // From the row itself. Looking it up in `organisations` broke as soon as that list
+  // became a page: an account whose organisation was not on it had no type, and its
+  // role picker came back empty.
+  if (!row.org_type) return [row.role]
+  return Object.keys(ROLE_ORG_TYPES).filter((role) => ROLE_ORG_TYPES[role].includes(row.org_type))
+}
+
+function orgQuery() {
+  const params = new URLSearchParams()
+  if (orgSearch.value.trim()) params.set('q', orgSearch.value.trim())
+  if (orgTypeFilter.value) params.set('type', orgTypeFilter.value)
+  params.set('limit', String(PAGE_SIZE))
+  params.set('offset', String(orgOffset.value))
+  return params.toString()
+}
+
+async function loadOrganisations() {
+  const orgs = await get(`/admin/organisations?${orgQuery()}`)
+  organisations.value = orgs.organisations
+  orgTotal.value = orgs.total ?? orgs.organisations.length
+}
+
+async function applyOrgSearch() {
+  orgOffset.value = 0
+  rowError.value = ''
+  try {
+    await loadOrganisations()
+  } catch (err) {
+    rowError.value = err.message || 'Failed to search organisations.'
+  }
+}
+
+async function pageOrganisations(delta) {
+  orgOffset.value = Math.max(0, orgOffset.value + delta * PAGE_SIZE)
+  rowError.value = ''
+  try {
+    await loadOrganisations()
+  } catch (err) {
+    rowError.value = err.message || 'Failed to load organisations.'
+  }
 }
 
 function userQuery() {
@@ -152,9 +200,13 @@ async function changeRole(row, role) {
 async function loadAll() {
   loadError.value = ''
   try {
-    const [orgs, people] = await Promise.all([
-      get('/admin/organisations'), get(`/admin/users?${userQuery()}`)])
+    const [orgs, picker, people] = await Promise.all([
+      get(`/admin/organisations?${orgQuery()}`),
+      get('/admin/organisations?limit=200'),
+      get(`/admin/users?${userQuery()}`)])
     organisations.value = orgs.organisations
+    orgTotal.value = orgs.total ?? orgs.organisations.length
+    pickerOrganisations.value = picker.organisations
     users.value = people.users
     userTotal.value = people.total ?? people.users.length
   } catch (err) {
@@ -307,7 +359,51 @@ onMounted(async () => {
     <template v-else>
       <!-- Organisations -->
       <div class="bg-surface rounded-lg shadow p-6 space-y-4">
-        <h2 class="text-lg font-semibold text-navy">Organisations</h2>
+        <h2 class="text-lg font-semibold text-navy">
+          Organisations
+          <span class="ml-2 text-sm font-normal text-ink-muted">{{ orgTotal }} total</span>
+        </h2>
+
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="block">
+            <span class="block text-xs font-medium text-ink mb-1">Search</span>
+            <input
+              v-model="orgSearch"
+              type="search"
+              placeholder="Code or name"
+              class="w-64 min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm text-ink"
+              @keyup.enter="applyOrgSearch"
+            />
+          </label>
+          <label class="block">
+            <span class="block text-xs font-medium text-ink mb-1">Type</span>
+            <select
+              v-model="orgTypeFilter"
+              class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 text-sm text-ink"
+              @change="applyOrgSearch"
+            >
+              <option value="">Any</option>
+              <option v-for="type in ORG_TYPES" :key="type.value" :value="type.value">
+                {{ type.label }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="min-h-11 rounded-lg border border-border-strong bg-surface px-4 text-sm font-medium text-navy"
+            @click="applyOrgSearch"
+          >
+            Search
+          </button>
+          <button
+            v-if="orgSearch || orgTypeFilter"
+            type="button"
+            class="min-h-11 px-3 text-sm text-ink-muted underline underline-offset-2"
+            @click="orgSearch = ''; orgTypeFilter = ''; applyOrgSearch()"
+          >
+            Clear
+          </button>
+        </div>
 
         <div class="overflow-x-auto">
           <table class="min-w-full text-sm">
@@ -385,6 +481,32 @@ onMounted(async () => {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <div v-if="orgTotal > organisations.length || orgOffset > 0"
+             class="flex flex-wrap items-center justify-between gap-3 text-sm">
+          <p class="text-ink-muted">
+            Showing {{ organisations.length ? orgOffset + 1 : 0 }}–{{ orgOffset + organisations.length }}
+            of {{ orgTotal }}
+          </p>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              :disabled="orgOffset === 0"
+              class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 font-medium text-navy disabled:text-ink-subtle"
+              @click="pageOrganisations(-1)"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              :disabled="orgOffset + organisations.length >= orgTotal"
+              class="min-h-11 rounded-lg border border-border-strong bg-surface px-3 font-medium text-navy disabled:text-ink-subtle"
+              @click="pageOrganisations(1)"
+            >
+              Next
+            </button>
+          </div>
         </div>
 
         <p class="text-xs text-ink-muted">
