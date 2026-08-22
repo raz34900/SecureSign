@@ -121,7 +121,7 @@ async function confirmDelete(referenceId) {
       </p>
     </header>
 
-    <form class="max-w-4xl border-t border-border pt-4" @submit.prevent="loadCustomer">
+    <form class="border-t border-border pt-4" @submit.prevent="loadCustomer">
       <div class="flex flex-wrap items-end gap-3">
         <div>
           <label class="block text-xs font-semibold uppercase tracking-wide text-ink-muted" for="lookup-national-id">

@@ -115,7 +115,7 @@ async function handleLogout() {
       </div>
     </aside>
 
-    <main class="min-w-0 max-w-[110rem] px-4 py-6 sm:px-6 lg:px-8">
+    <main class="min-w-0 px-4 py-6 sm:px-6 lg:px-8">
       <router-view />
     </main>
   </div>
