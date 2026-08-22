@@ -528,7 +528,7 @@ async function reset() {
     <!-- ---------------------------------------------------------------- form -->
     <form
       v-if="!result"
-      class="mt-6 max-w-4xl space-y-6"
+      class="mt-6 space-y-6"
       @submit.prevent="handleSubmit"
     >
       <div

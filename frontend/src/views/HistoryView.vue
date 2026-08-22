@@ -354,14 +354,14 @@ onMounted(loadHistory)
               <tr
                 class="border-b border-border bg-sunken text-xs font-semibold uppercase tracking-wide text-ink-muted"
               >
-                <th scope="col" class="w-[22%] px-4 py-2 text-left font-semibold">Customer</th>
-                <th scope="col" class="w-[12%] px-4 py-2 text-left font-semibold">Verdict</th>
-                <th scope="col" class="w-[11%] px-4 py-2 text-right font-semibold">Distance</th>
-                <th scope="col" class="hidden w-[11%] px-4 py-2 text-right font-semibold lg:table-cell">Similarity</th>
-                <th scope="col" class="hidden w-[11%] px-4 py-2 text-left font-semibold lg:table-cell">Checked by</th>
-                <th scope="col" class="hidden w-[16%] px-4 py-2 text-left font-semibold sm:table-cell">When</th>
-                <th scope="col" class="hidden w-[8%] px-4 py-2 text-left font-semibold lg:table-cell">Report</th>
-                <th scope="col" class="w-[10%] px-4 py-2 text-right font-semibold">
+                <th scope="col" class="px-4 py-2 text-left font-semibold">Customer</th>
+                <th scope="col" class="px-4 py-2 text-left font-semibold">Verdict</th>
+                <th scope="col" class="px-4 py-2 text-right font-semibold">Distance</th>
+                <th scope="col" class="hidden px-4 py-2 text-right font-semibold lg:table-cell">Similarity</th>
+                <th scope="col" class="hidden px-4 py-2 text-left font-semibold lg:table-cell">Checked by</th>
+                <th scope="col" class="hidden px-4 py-2 text-left font-semibold sm:table-cell">When</th>
+                <th scope="col" class="hidden px-4 py-2 text-left font-semibold lg:table-cell">Report</th>
+                <th scope="col" class="px-4 py-2 text-right font-semibold">
                   <span class="sr-only">Details</span>
                 </th>
               </tr>
