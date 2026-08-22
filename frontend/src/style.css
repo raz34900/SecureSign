@@ -104,6 +104,18 @@ html {
   caret-color: var(--color-navy);
 }
 
+/* iOS zooms the page in when a field with text under 16px takes focus, and does not zoom
+   back out afterwards. Hold fields at 16px wherever a touch keyboard is likely; the
+   alternative, a maximum-scale on the viewport, stops the zoom by taking pinch-zoom away
+   from everyone, which fails WCAG 1.4.4. Desktop keeps the denser 14px. */
+@media (max-width: 63.99rem) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
 /* Distances, confidences and counts sit in columns and must not jitter between rows. */
 code,
 .tabular {

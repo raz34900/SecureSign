@@ -60,11 +60,18 @@ def login(body: LoginRequest, response: Response, db: Session = Depends(get_db))
         throttle.record_failure(body.org_code, body.username)
         raise AppError("AUTH_INVALID", _GENERIC, 401)
     throttle.clear(body.org_code, body.username)
-    token = sessions.create_session(db, user.id, get_settings().session_ttl_hours)
+    ttl_hours = get_settings().session_ttl_hours
+    token = sessions.create_session(db, user.id, ttl_hours)
     # Secure: every entrypoint is TLS and port 80 only redirects, so there is no request
     # this cookie legitimately rides in the clear. Without it a single forced plaintext
     # request to any port on this host hands over a live session.
-    response.set_cookie("session", token, httponly=True, samesite="lax", secure=True)
+    #
+    # max_age matched to the session row, not left off. Without it this is a browser
+    # session cookie, and a phone that evicts the tab in the background drops it - which
+    # signed clerks out every time they left the site, while a desktop that keeps its
+    # process alive never showed it. The server still decides when the session dies.
+    response.set_cookie("session", token, max_age=ttl_hours * 3600,
+                        httponly=True, samesite="lax", secure=True)
     return {"role": user.role, "org_type": org.type,
             "must_change_password": user.must_change_password}
 

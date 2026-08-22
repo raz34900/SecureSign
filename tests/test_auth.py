@@ -65,3 +65,25 @@ def test_logout_revokes(client, seeded):
     login(client, "BA11", "clerk1")
     assert client.post("/auth/logout").status_code == 200
     assert client.get("/auth/me").status_code == 401
+
+
+def test_the_session_cookie_outlives_the_browser_session(client, seeded):
+    """Without max-age this is a browser session cookie, and a phone that evicts the tab
+    in the background drops it — which signed clerks out every time they left the site.
+    A desktop keeps its process alive and never showed it."""
+    from backend.app.config import get_settings
+
+    response = login(client, "BA11", "clerk1")
+    assert response.status_code == 200
+
+    header = response.headers["set-cookie"]
+    assert "Max-Age=" in header, f"session cookie has no lifetime: {header}"
+
+    max_age = int(header.split("Max-Age=")[1].split(";")[0])
+    assert max_age == get_settings().session_ttl_hours * 3600, \
+        "the cookie must die with the session row, not before or after it"
+
+    # The protections that were already there stay there.
+    assert "HttpOnly" in header
+    assert "Secure" in header
+    assert "SameSite=lax" in header.replace("samesite", "SameSite")
