@@ -476,7 +476,7 @@ function ordinalClass(n) {
 
     <!-- Step 1: Details -->
     <section v-if="step === 1" class="space-y-5">
-      <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div class="grid max-w-4xl gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
         <div>
           <label for="enrol-national-id" class="mb-1 block text-2xs font-semibold uppercase tracking-wide text-ink-muted">National ID</label>
           <input
