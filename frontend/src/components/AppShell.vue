@@ -51,7 +51,7 @@ async function handleLogout() {
     <router-view />
   </div>
 
-  <div v-else class="min-h-screen lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
+  <div v-else class="min-h-screen w-full lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
     <!-- A persistent rail, so content keeps the whole remaining width instead of sitting
          in a centred column with the screen empty on either side of it. -->
     <aside class="flex flex-col bg-navy text-ink-inverse lg:sticky lg:top-0 lg:h-screen">
