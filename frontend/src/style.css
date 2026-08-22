@@ -80,6 +80,12 @@
 }
 
 html {
+  /* No child may extend the document sideways. A table that overflows its own scroller
+     used to widen the page instead, and every full-width surface then stopped at the
+     viewport edge while the page scrolled past it - which reads as the whole interface
+     being pinned to the left of the screen. `clip` rather than `hidden`, because `hidden`
+     would make this a scroll container and break every `position: sticky` inside it. */
+  overflow-x: clip;
   background-color: var(--color-canvas);
   color: var(--color-ink);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
