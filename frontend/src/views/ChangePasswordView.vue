@@ -77,7 +77,7 @@ async function handleSubmit() {
       </p>
     </header>
 
-    <form class="border-t border-border pt-4" @submit.prevent="handleSubmit">
+    <form class="max-w-4xl border-t border-border pt-4" @submit.prevent="handleSubmit">
       <NoticeBanner v-if="errorMessage" level="error" class="mb-4">
         {{ errorMessage }}
       </NoticeBanner>
