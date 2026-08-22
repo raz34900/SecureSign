@@ -33,6 +33,27 @@ const verdictFilter = ref('')
 const nationalIdFilter = ref('')
 
 const expandedId = ref('')
+
+/* The detail row spans the table, and a span wider than the columns that actually exist
+   makes the browser allocate the missing ones - which inflated the table far past the
+   screen the moment a row was opened. Columns are hidden by breakpoint, so the span has
+   to follow them. */
+const wideScreen = ref(false)
+const mediumScreen = ref(false)
+
+if (typeof window !== 'undefined' && window.matchMedia) {
+  const lg = window.matchMedia('(min-width: 64rem)')
+  const sm = window.matchMedia('(min-width: 40rem)')
+  const sync = () => {
+    wideScreen.value = lg.matches
+    mediumScreen.value = sm.matches
+  }
+  sync()
+  lg.addEventListener('change', sync)
+  sm.addEventListener('change', sync)
+}
+
+const columnCount = computed(() => (wideScreen.value ? 8 : mediumScreen.value ? 5 : 4))
 const benchIndex = ref(0)
 const reportLabel = ref('')
 const reportComment = ref('')
@@ -326,8 +347,8 @@ onMounted(loadHistory)
 
       <!-- A table is a distinct object, so it keeps a hairline border and no shadow. -->
       <div class="rounded-md border border-border bg-surface">
-        <div class="overflow-x-auto">
-          <table class="w-full text-sm">
+        <div class="overflow-hidden">
+          <table class="w-full table-fixed text-sm">
             <caption class="sr-only">Verification history, most recent first</caption>
             <thead>
               <tr
@@ -336,10 +357,10 @@ onMounted(loadHistory)
                 <th scope="col" class="px-4 py-2 text-left font-semibold">Customer</th>
                 <th scope="col" class="px-4 py-2 text-left font-semibold">Verdict</th>
                 <th scope="col" class="px-4 py-2 text-right font-semibold">Distance</th>
-                <th scope="col" class="px-4 py-2 text-right font-semibold">Similarity</th>
-                <th scope="col" class="px-4 py-2 text-left font-semibold">Checked by</th>
-                <th scope="col" class="px-4 py-2 text-left font-semibold">When</th>
-                <th scope="col" class="px-4 py-2 text-left font-semibold">Report</th>
+                <th scope="col" class="hidden px-4 py-2 text-right font-semibold lg:table-cell">Similarity</th>
+                <th scope="col" class="hidden px-4 py-2 text-left font-semibold lg:table-cell">Checked by</th>
+                <th scope="col" class="hidden px-4 py-2 text-left font-semibold sm:table-cell">When</th>
+                <th scope="col" class="hidden px-4 py-2 text-left font-semibold lg:table-cell">Report</th>
                 <th scope="col" class="px-4 py-2 text-right font-semibold">
                   <span class="sr-only">Details</span>
                 </th>
@@ -368,12 +389,12 @@ onMounted(loadHistory)
                     </span>
                   </td>
                   <td class="tabular px-4 py-2.5 text-right text-ink">{{ formatDistance(v.distance) }}</td>
-                  <td class="tabular px-4 py-2.5 text-right text-ink">{{ formatConfidence(v.confidence) }}</td>
-                  <td class="px-4 py-2.5 text-ink-muted">{{ v.performed_by }}</td>
-                  <td class="tabular whitespace-nowrap px-4 py-2.5 text-ink-muted">
+                  <td class="tabular hidden px-4 py-2.5 text-right text-ink lg:table-cell">{{ formatConfidence(v.confidence) }}</td>
+                  <td class="hidden px-4 py-2.5 text-ink-muted lg:table-cell">{{ v.performed_by }}</td>
+                  <td class="tabular hidden whitespace-nowrap px-4 py-2.5 text-ink-muted sm:table-cell">
                     {{ formatDateTime(v.created_at) }}
                   </td>
-                  <td class="px-4 py-2.5 text-xs">
+                  <td class="hidden px-4 py-2.5 text-xs lg:table-cell">
                     <span v-if="v.feedback" class="text-ink-muted">
                       {{ v.feedback.claimed_label }} · {{ v.feedback.status }}
                     </span>
@@ -404,8 +425,8 @@ onMounted(loadHistory)
                 </tr>
 
                 <tr v-if="expandedId === v.request_id">
-                  <td colspan="8" class="bg-sunken px-4 py-4">
-                    <div class="sticky left-0 w-[calc(100vw-2rem)] max-w-full sm:w-[calc(100vw-3rem)] lg:w-auto">
+                  <td :colspan="columnCount" class="bg-sunken px-4 py-4">
+                    <div class="w-full">
                     <div class="space-y-4">
                       <p v-if="detailLoading" role="status" class="text-sm text-ink-muted">
                         Loading this result…
