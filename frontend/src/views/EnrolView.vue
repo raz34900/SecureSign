@@ -430,7 +430,7 @@ function ordinalClass(n) {
 </script>
 
 <template>
-  <div class="space-y-5 lg:mx-auto lg:max-w-6xl">
+  <div class="space-y-5 lg:mx-auto lg:max-w-[56rem]">
     <h1 class="text-xl font-semibold text-navy">Enrol customer</h1>
 
     <!-- Progress and the record it belongs to on one rule: the clerk always knows which
@@ -477,10 +477,10 @@ function ordinalClass(n) {
     <!-- Step 1: Details -->
     <!-- The step caps as one column so the rule above Continue stops where the fields
          stop; a hairline running the full width is what strands the button. -->
-    <section v-if="step === 1" class="space-y-5 lg:max-w-[49rem]">
+    <section v-if="step === 1" class="space-y-5">
       <!-- Each field gets the width its content needs, not a third of the viewport: a
            9-digit id in a 500px box reads as a field the clerk has filled in wrongly. -->
-      <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,11rem)_minmax(0,22rem)_minmax(0,13rem)]">
+      <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-[11rem_minmax(0,1fr)_13rem]">
         <div>
           <label for="enrol-national-id" class="mb-1 block text-2xs font-semibold uppercase tracking-wide text-ink-muted">National ID</label>
           <input
