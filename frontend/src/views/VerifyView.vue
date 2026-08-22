@@ -506,7 +506,10 @@ async function reset() {
 </script>
 
 <template>
-  <div>
+  <!-- Asking takes a column; answering takes the width. Two short questions centred in
+       2000px of screen is the input state, and the comparison that follows is the one
+       thing in the product that genuinely wants every pixel it can have. -->
+  <div :class="result ? '' : 'lg:mx-auto lg:max-w-6xl'">
     <!-- ------------------------------------------------------------- header -->
     <header class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-border pb-4">
       <div>

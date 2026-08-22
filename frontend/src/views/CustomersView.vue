@@ -112,7 +112,7 @@ async function confirmDelete(referenceId) {
 </script>
 
 <template>
-  <div class="space-y-6">
+  <div class="space-y-6 lg:mx-auto lg:max-w-6xl">
     <header>
       <h1 class="text-xl font-semibold text-ink">Customers</h1>
       <p class="mt-1 max-w-prose text-sm text-ink-muted">

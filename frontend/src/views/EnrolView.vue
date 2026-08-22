@@ -430,7 +430,7 @@ function ordinalClass(n) {
 </script>
 
 <template>
-  <div class="space-y-5">
+  <div class="space-y-5 lg:mx-auto lg:max-w-6xl">
     <h1 class="text-xl font-semibold text-navy">Enrol customer</h1>
 
     <!-- Progress and the record it belongs to on one rule: the clerk always knows which
