@@ -354,14 +354,17 @@ onMounted(loadHistory)
               <tr
                 class="border-b border-border bg-sunken text-xs font-semibold uppercase tracking-wide text-ink-muted"
               >
-                <th scope="col" class="px-4 py-2 text-left font-semibold">Customer</th>
-                <th scope="col" class="px-4 py-2 text-left font-semibold">Verdict</th>
-                <th scope="col" class="px-4 py-2 text-right font-semibold">Distance</th>
-                <th scope="col" class="hidden px-4 py-2 text-right font-semibold lg:table-cell">Similarity</th>
-                <th scope="col" class="hidden px-4 py-2 text-left font-semibold lg:table-cell">Checked by</th>
-                <th scope="col" class="hidden px-4 py-2 text-left font-semibold sm:table-cell">When</th>
-                <th scope="col" class="hidden px-4 py-2 text-left font-semibold lg:table-cell">Report</th>
-                <th scope="col" class="px-4 py-2 text-right font-semibold">
+                <!-- Widths are lg: only. Every column hidden below lg turns on at the same
+                     64rem query, so widths and visibility flip together and a narrow screen
+                     never sees a partial set. -->
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken px-4 py-2 text-left font-semibold lg:w-[16%]">Customer</th>
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken px-4 py-2 text-left font-semibold lg:w-[11%]">Verdict</th>
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken px-4 py-2 text-right font-semibold lg:w-[10%]">Distance</th>
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken hidden px-4 py-2 text-right font-semibold lg:table-cell lg:w-[11%]">Similarity</th>
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken hidden px-4 py-2 text-left font-semibold lg:table-cell lg:w-[12%]">Checked by</th>
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken hidden px-4 py-2 text-left font-semibold sm:table-cell lg:w-[22%]">When</th>
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken hidden px-4 py-2 text-left font-semibold lg:table-cell lg:w-[9%]">Report</th>
+                <th scope="col" class="lg:sticky lg:top-0 lg:z-10 lg:bg-sunken px-4 py-2 text-right font-semibold lg:w-[9%]">
                   <span class="sr-only">Details</span>
                 </th>
               </tr>

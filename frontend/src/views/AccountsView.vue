@@ -468,7 +468,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="overflow-x-auto rounded-md border border-border bg-surface">
+        <div class="overflow-x-auto rounded-md border border-border bg-surface 2xl:max-w-[88rem]">
           <table class="min-w-full text-sm">
             <thead class="bg-sunken">
               <tr class="border-b border-border">
@@ -635,7 +635,7 @@ onMounted(async () => {
               class="min-h-11 w-32 rounded-md border border-border-strong bg-surface px-3 font-mono text-sm uppercase text-ink tabular"
             />
           </label>
-          <label class="block min-w-56 flex-1">
+          <label class="block min-w-56 flex-1 lg:max-w-96">
             <span class="mb-1 block text-xs font-medium text-ink-muted">Display name</span>
             <input
               v-model="orgForm.name"
@@ -725,7 +725,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="overflow-x-auto rounded-md border border-border bg-surface">
+        <div class="overflow-x-auto rounded-md border border-border bg-surface 2xl:max-w-[88rem]">
           <table class="min-w-full text-sm">
             <thead class="bg-sunken">
               <tr class="border-b border-border">
@@ -849,8 +849,8 @@ onMounted(async () => {
 
                 <tr v-if="resettingId === row.user_id" class="bg-sunken">
                   <td colspan="6" class="px-3 py-2.5">
-                    <div class="flex flex-wrap items-center justify-end gap-3">
-                      <p class="mr-auto max-w-prose text-xs text-ink-muted">
+                    <div class="flex flex-wrap items-center justify-end gap-3 lg:justify-start">
+                      <p class="mr-auto max-w-prose text-xs text-ink-muted lg:mr-0">
                         A new one-time password is generated and shown once.
                         {{ row.username }} is signed out everywhere and must choose their own.
                       </p>

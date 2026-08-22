@@ -254,7 +254,7 @@ onMounted(async () => {
           </div>
 
           <div class="flex">
-            <div class="relative h-56 w-11 shrink-0 sm:h-64 xl:h-72">
+            <div class="relative h-56 w-11 shrink-0 sm:h-64 xl:h-72 2xl:h-96">
               <span
                 v-for="tick in axis.ticks"
                 :key="tick"
@@ -265,7 +265,7 @@ onMounted(async () => {
 
             <div class="min-w-0 flex-1">
               <div
-                class="relative h-56 border-b border-l border-border-strong sm:h-64 xl:h-72"
+                class="relative h-56 border-b border-l border-border-strong sm:h-64 xl:h-72 2xl:h-96"
                 role="img"
                 :aria-label="chartSummary"
               >

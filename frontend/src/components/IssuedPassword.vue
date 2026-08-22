@@ -10,7 +10,7 @@ defineEmits(['done'])
 </script>
 
 <template>
-  <div class="rounded-lg border-2 border-brand-green bg-valid-surface p-4 space-y-2">
+  <div class="rounded-lg border-2 border-brand-green bg-valid-surface p-4 space-y-2 lg:max-w-2xl">
     <p class="text-sm font-semibold text-ink">
       One-time password for {{ username }}<template v-if="orgCode"> ({{ orgCode }})</template>
     </p>

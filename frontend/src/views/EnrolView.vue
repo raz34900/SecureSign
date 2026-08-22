@@ -475,8 +475,12 @@ function ordinalClass(n) {
     </p>
 
     <!-- Step 1: Details -->
-    <section v-if="step === 1" class="space-y-5">
-      <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2 xl:grid-cols-3">
+    <!-- The step caps as one column so the rule above Continue stops where the fields
+         stop; a hairline running the full width is what strands the button. -->
+    <section v-if="step === 1" class="space-y-5 lg:max-w-[49rem]">
+      <!-- Each field gets the width its content needs, not a third of the viewport: a
+           9-digit id in a 500px box reads as a field the clerk has filled in wrongly. -->
+      <div class="grid gap-x-6 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(0,11rem)_minmax(0,22rem)_minmax(0,13rem)]">
         <div>
           <label for="enrol-national-id" class="mb-1 block text-2xs font-semibold uppercase tracking-wide text-ink-muted">National ID</label>
           <input
@@ -644,7 +648,7 @@ function ordinalClass(n) {
         </button>
         <button
           type="button"
-          class="ml-auto min-h-11 px-2 text-sm font-medium text-ink-muted underline underline-offset-2"
+          class="ml-auto min-h-11 px-2 text-sm font-medium text-ink-muted underline underline-offset-2 lg:ml-12"
           @click="requestCancel"
         >
           Cancel enrolment
@@ -733,7 +737,7 @@ function ordinalClass(n) {
 
       <!-- Tiles stay in the 220-280px band whatever the viewport: below that a signature
            cannot be judged, above it the clerk scrolls to see a set of ten. -->
-      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+      <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-[repeat(auto-fill,minmax(14rem,1fr))]">
         <button
           v-for="crop in crops"
           :key="crop.crop_id"
@@ -779,7 +783,7 @@ function ordinalClass(n) {
         </button>
         <button
           type="button"
-          class="ml-auto min-h-11 px-2 text-sm font-medium text-ink-muted underline underline-offset-2"
+          class="ml-auto min-h-11 px-2 text-sm font-medium text-ink-muted underline underline-offset-2 lg:ml-12"
           @click="requestCancel"
         >
           Cancel enrolment

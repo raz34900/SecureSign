@@ -548,7 +548,9 @@ async function reset() {
       </div>
 
       <!-- Who and what, side by side: two short answers, not two stacked screens. -->
-      <div class="grid gap-x-10 gap-y-6 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+      <!-- Both columns are sized to what they hold. A 380px "Choose a file" is the same
+           defect as a 380px field for nine digits. -->
+      <div class="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,28rem)] xl:grid-cols-[minmax(0,20rem)_minmax(0,32rem)]">
         <div>
           <label for="national-id" class="block text-sm font-semibold text-ink">
             Customer national ID
@@ -563,7 +565,7 @@ async function reset() {
             placeholder="9 digits"
             :aria-invalid="nationalIdTouched && !nationalIdValid"
             aria-describedby="national-id-error"
-            class="tabular mt-1.5 min-h-11 w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-subtle sm:text-sm"
+            class="tabular mt-1.5 min-h-11 w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-base text-ink placeholder:text-ink-subtle sm:text-sm lg:max-w-80"
             @blur="nationalIdTouched = true"
           />
           <p
@@ -784,7 +786,7 @@ async function reset() {
             <button
               type="button"
               :aria-pressed="chosenRegion === 'whole'"
-              class="mt-2 min-h-11 w-full rounded-md border px-4 text-sm font-medium transition-colors"
+              class="mt-2 min-h-11 w-full rounded-md border px-4 text-sm font-medium transition-colors lg:w-auto"
               :class="chosenRegion === 'whole'
                 ? 'border-valid bg-valid-surface text-valid'
                 : 'border-border-strong bg-surface text-navy hover:bg-sunken'"
@@ -1036,7 +1038,7 @@ async function reset() {
               </h3>
               <span class="tabular text-2xs text-ink-subtle">{{ anchorsByCloseness.length }}</span>
             </div>
-            <ul class="max-h-96 divide-y divide-border overflow-y-auto">
+            <ul class="max-h-96 divide-y divide-border overflow-y-auto xl:max-h-[32rem]">
               <li v-for="anchor in anchorsByCloseness" :key="anchor.key">
                 <button
                   type="button"
@@ -1145,7 +1147,7 @@ async function reset() {
         <summary class="min-h-11 cursor-pointer py-3 text-sm font-medium text-ink marker:text-ink-subtle">
           Technical details
         </summary>
-        <dl class="grid gap-x-10 gap-y-3 pb-3 sm:grid-cols-2 xl:grid-cols-4">
+        <dl class="grid gap-x-10 gap-y-3 pb-3 sm:grid-cols-2 xl:max-w-5xl xl:grid-cols-4">
           <div>
             <dt class="text-2xs font-semibold uppercase tracking-wide text-ink-muted">Model version</dt>
             <dd class="tabular mt-0.5 text-sm text-ink">{{ result.model_version }}</dd>
