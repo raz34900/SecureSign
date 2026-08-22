@@ -241,7 +241,7 @@ onMounted(async () => {
           </div>
         </div>
 
-        <div class="overflow-x-auto rounded-md border border-border bg-surface">
+        <div class="overflow-x-auto rounded-md border border-border bg-surface 2xl:max-w-[88rem]">
           <table class="min-w-full text-sm">
             <thead class="bg-sunken">
               <tr class="border-b border-border">
@@ -352,8 +352,8 @@ onMounted(async () => {
 
                 <tr v-if="resettingId === row.user_id" class="bg-sunken">
                   <td colspan="5" class="px-3 py-2.5">
-                    <div class="flex flex-wrap items-center justify-end gap-3">
-                      <p class="mr-auto max-w-prose text-xs text-ink-muted">
+                    <div class="flex flex-wrap items-center justify-end gap-3 lg:justify-start">
+                      <p class="mr-auto max-w-prose text-xs text-ink-muted lg:mr-0">
                         A new one-time password is generated and shown once. {{ row.username }} is
                         signed out everywhere and must choose their own before the account works again.
                       </p>
