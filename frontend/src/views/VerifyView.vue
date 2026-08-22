@@ -509,7 +509,7 @@ async function reset() {
   <!-- Asking takes a column; answering takes the width. Two short questions centred in
        2000px of screen is the input state, and the comparison that follows is the one
        thing in the product that genuinely wants every pixel it can have. -->
-  <div :class="result ? '' : 'lg:mx-auto lg:max-w-6xl'">
+  <div :class="result ? '' : 'lg:mx-auto lg:max-w-[56rem]'">
     <!-- ------------------------------------------------------------- header -->
     <header class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3 border-b border-border pb-4">
       <div>
@@ -553,7 +553,7 @@ async function reset() {
       <!-- Who and what, side by side: two short answers, not two stacked screens. -->
       <!-- Both columns are sized to what they hold. A 380px "Choose a file" is the same
            defect as a 380px field for nine digits. -->
-      <div class="grid gap-x-10 gap-y-6 lg:grid-cols-[minmax(0,18rem)_minmax(0,28rem)] xl:grid-cols-[minmax(0,20rem)_minmax(0,32rem)]">
+      <div class="grid gap-x-10 gap-y-6 lg:grid-cols-[18rem_minmax(0,1fr)] xl:grid-cols-[20rem_minmax(0,1fr)]">
         <div>
           <label for="national-id" class="block text-sm font-semibold text-ink">
             Customer national ID
