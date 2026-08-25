@@ -3,6 +3,7 @@ import logging
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import OperationalError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 log = logging.getLogger("securesign")
@@ -36,6 +37,16 @@ def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(RequestValidationError)
     async def validation_error(_: Request, exc: RequestValidationError) -> JSONResponse:
         return _envelope(422, "INVALID_INPUT", "Request validation failed.")
+
+    @app.exception_handler(OperationalError)
+    async def database_unreachable(_: Request, exc: OperationalError) -> JSONResponse:
+        # Fail closed, and say which failure this is: 503 means "we are down, try again",
+        # where 500 means "we are broken". A caller can act on the difference, and the
+        # Retry-After spares the server a thundering retry the moment it returns.
+        log.error("database unreachable: %s", exc.orig or exc)
+        return _envelope(503, "SERVICE_UNAVAILABLE",
+                         "The service is temporarily unavailable. Please try again shortly.",
+                         headers={"Retry-After": "10"})
 
     @app.exception_handler(Exception)
     async def internal_error(_: Request, exc: Exception) -> JSONResponse:

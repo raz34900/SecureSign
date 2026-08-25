@@ -21,4 +21,7 @@ COPY models ./models
 RUN pip install --no-cache-dir .
 
 EXPOSE 8000
-CMD ["uvicorn", "backend.app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000"]
+# On SIGTERM uvicorn stops accepting and drains in-flight requests; unbounded, a stuck
+# request holds shutdown forever, and compose's stop timer must outlast this one or the
+# drain is cut short by SIGKILL mid-verification anyway.
+CMD ["uvicorn", "backend.app.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--timeout-graceful-shutdown", "30"]
