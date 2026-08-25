@@ -46,11 +46,28 @@ services:
         condition: service_healthy
 
   db:
-    image: postgres:16-alpine
+    build:
+      context: ./deploy
+      dockerfile: db.Dockerfile
     restart: unless-stopped
+    # Every finished WAL segment is pushed to the repository at once, and a segment is
+    # forced closed every 60s even when idle - so the most that can ever be lost is about
+    # a minute, not a day. The verdict rows and the audit log are the unacceptable loss;
+    # an hour of downtime restoring is not.
+    command: >
+      postgres
+      -c archive_mode=on
+      -c archive_command='pgbackrest --stanza=main archive-push %p'
+      -c archive_timeout=60
     environment:
       POSTGRES_DB: securesign
       POSTGRES_USER: securesign
+      # The repository is encrypted by pgBackRest itself, so wherever it is copied -
+      # local volume today, Backblaze at deployment - it is ciphertext. This passphrase
+      # is a THIRD key, deliberately separate from SS_PII_*: it must never live in the
+      # same place as the backups it protects, and losing it loses every backup.
+      PGBACKREST_REPO1_CIPHER_TYPE: aes-256-cbc
+      PGBACKREST_REPO1_CIPHER_PASS: "${BACKUP_REPO_PASSPHRASE:?add BACKUP_REPO_PASSPHRASE to .env - generate one with openssl rand -hex 32}"
       # Interpolation reads the shell, or the .env beside THIS file - not ../.env, which
       # is only handed to the api container. Run compose with --env-file ../.env (or from
       # the repository root, --env-file .env) to use the one that already holds it.
@@ -69,6 +86,8 @@ services:
       start_period: 10s
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - pgbackrest:/var/lib/pgbackrest
 
 volumes:
   pgdata:
+  pgbackrest:
