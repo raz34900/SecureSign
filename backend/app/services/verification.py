@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
 from backend.app.errors import AppError
-from backend.app.models_db import ReferenceSignature, Verification
+from backend.app.models_db import ReferenceSignature, Verification, iso_utc
 from backend.app.repositories import (audit, customer_keys, customers as customers_repo,
                                       references as references_repo)
 from backend.app.repositories import verifications as verifications_repo
@@ -275,7 +275,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
         "borderline_margin": BORDERLINE_MARGIN,
         "confidence": round(result.confidence, 1),
         "model_version": settings.model_version,
-        "verified_at": row.created_at.isoformat() + "Z",
+        "verified_at": iso_utc(row.created_at),
         "query_preview_png_base64": query_preview(query_img),
     }
     if include_references:

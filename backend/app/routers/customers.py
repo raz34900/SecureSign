@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from backend.app.auth.deps import CurrentUser, get_db, require_roles
 from backend.app.config import get_settings
 from backend.app.errors import AppError
-from backend.app.models_db import Customer, ReferenceSignature
+from backend.app.models_db import Customer, ReferenceSignature, iso_utc
 from backend.app.repositories import audit
 from backend.app.repositories import customers as customers_repo
 from backend.app.repositories import customer_keys
@@ -124,7 +124,7 @@ def lookup_customer(national_id: Annotated[NationalId, Path()], db: Session = De
     if customer is None or not _may_manage(db, customer, user.org_id):
         raise _not_found()
     return {"customer_id": customer.id, "full_name": customer.full_name,
-            "status": customer.status, "created_at": customer.created_at.isoformat(),
+            "status": customer.status, "created_at": iso_utc(customer.created_at),
             "own_reference_count": references_repo.own_count(db, customer.id, user.org_id),
             "total_reference_count": references_repo.total_count(db, customer.id),
             "reference_floor": enrolment.MIN_REFS}
@@ -137,7 +137,7 @@ def get_customer(customer_id: str, db: Session = Depends(get_db),
     if customer is None:
         raise _not_found()
     return {"customer_id": customer.id, "full_name": customer.full_name,
-            "status": customer.status, "created_at": customer.created_at.isoformat()}
+            "status": customer.status, "created_at": iso_utc(customer.created_at)}
 
 
 @router.delete("/{customer_id}")

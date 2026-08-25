@@ -29,6 +29,20 @@ def as_utc(value: datetime | None) -> datetime | None:
     return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
 
 
+def iso_utc(value: datetime | None) -> str | None:
+    """A timestamp as ISO 8601 in UTC, ending in Z. The one spelling every response uses.
+
+    Three things produced three different strings before this. A row read back from SQLite
+    is naive, so isoformat() omitted the offset and the browser read it as local time. The
+    same row read from PostgreSQL is aware and rendered +00:00. And a freshly committed
+    object still holds the aware value Python put there, which is why appending "Z" by
+    hand once emitted "+00:00Z" and parsed nowhere.
+    """
+    if value is None:
+        return None
+    return as_utc(value).isoformat().replace("+00:00", "Z")
+
+
 class Organisation(Base):
     __tablename__ = "organisations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)

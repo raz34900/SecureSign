@@ -14,7 +14,8 @@ from backend.app.auth.passwords import (generate_handover_password, hash_passwor
                                         verify_password)
 from backend.app.errors import AppError
 from backend.app.models_db import (ConsentRecord, Customer, ModelFeedback, Organisation,
-                                   ReferenceSignature, SessionRow, User, Verification)
+                                   ReferenceSignature, SessionRow, User, Verification,
+                                   iso_utc)
 
 ORG_TYPES = ("financial", "subscriber", "operator")
 
@@ -134,7 +135,7 @@ def list_organisations(db: Session, *, search: str | None = None, org_type: str 
         out.append({"code": org.code, "name": org.name, "type": org.type,
                     "is_active": org.is_active, "active_users": counts.get(org.id, 0),
                     "deletable": not blockers, "blockers": blockers,
-                    "created_at": org.created_at.isoformat()})
+                    "created_at": iso_utc(org.created_at)})
     return out
 
 
@@ -191,7 +192,7 @@ def list_users(db: Session, scope_org_id: str | None = None, *, search: str | No
              "org_type": org.type,
              "must_change_password": user.must_change_password,
              "deletable": not blockers_for(user.id), "blockers": blockers_for(user.id),
-             "created_at": user.created_at.isoformat()}
+             "created_at": iso_utc(user.created_at)}
             for user, org in db.execute(stmt).all()]
 
 

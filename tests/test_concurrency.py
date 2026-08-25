@@ -15,7 +15,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 
 from backend.app.db import Base, make_engine, make_session_factory
-from conftest import login
+from conftest import TEST_DATABASE_URL, login
 from test_enrolment import do_full_enrolment
 from test_signature_core import make_signature
 from test_verify import png
@@ -28,10 +28,19 @@ pytestmark = pytest.mark.slow
 
 
 @pytest.fixture
-def session_factory(tmp_path):
-    """File-backed database for this module only: the shared in-memory StaticPool
-    fixture funnels every thread through one connection, which would serialise the
-    load and interleave transactions instead of exercising real concurrency."""
+def session_factory(tmp_path, session_factory):
+    """File-backed database for this module only: the shared in-memory StaticPool fixture
+    funnels every thread through one connection, which would serialise the load and
+    interleave transactions instead of exercising real concurrency.
+
+    Under SS_TEST_DATABASE_URL the shared fixture is already a real server, so this defers
+    to it. Pinning the module to SQLite meant the one suite that exercises concurrent
+    writes never ran against the database whose concurrency behaviour actually differs.
+    (The parameter shadows the conftest fixture of the same name; pytest resolves it to
+    the parent, which is the documented way to override and still reach it.)
+    """
+    if TEST_DATABASE_URL:
+        return session_factory
     engine = make_engine(f"sqlite:///{tmp_path / 'load.db'}",
                          connect_args={"check_same_thread": False, "timeout": 30})
     Base.metadata.create_all(engine)

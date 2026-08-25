@@ -8,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
-from backend.app.models_db import Customer, Organisation, ReferenceSignature
+from backend.app.models_db import Customer, Organisation, ReferenceSignature, iso_utc
 from backend.app.repositories import feedback as feedback_repo
 from backend.app.repositories import verifications as verifications_repo
 from signature_core.decision import BORDERLINE_MARGIN, band
@@ -79,7 +79,7 @@ def feedback_queue(db: Session, status: str | None) -> list[dict]:
             "claimed_label": review.claimed_label,
             "comment": review.comment,
             "model_version": review.model_version,
-            "created_at": review.created_at.isoformat(),
+            "created_at": iso_utc(review.created_at),
             "reporter": {
                 "organisation": org.name,
                 "type": org.type,
@@ -95,7 +95,7 @@ def feedback_queue(db: Session, status: str | None) -> list[dict]:
                 "margin": round(record.distance - record.threshold_used, 4),
                 "band": band(record.distance, record.threshold_used),
                 "confidence": round(record.confidence, 1),
-                "created_at": record.created_at.isoformat(),
+                "created_at": iso_utc(record.created_at),
             },
         })
     return out
