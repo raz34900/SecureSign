@@ -116,7 +116,7 @@ def main() -> int:
         print(f"The password came from ${PASSWORD_ENV}, so {username} must replace it "
               "at first sign-in.")
     print("\nThe engineering panel is internal only. On the machine running SecureSign:")
-    print("  http://localhost:8081/accounts")
+    print("  https://localhost:8081/accounts")
     print("Add the institutions and their people there.")
     return 0
 

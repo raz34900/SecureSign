@@ -22,6 +22,9 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
+    # Above uvicorn's 30s drain, or compose SIGKILLs a verification it was finishing.
+    # The compose default is 10s, and a CPU inference can outlive that.
+    stop_grace_period: 40s
     # If the database is not there yet the app fails loudly and exits, on purpose - and
     # this brings it back to try again. depends_on below orders startup on one host, but
     # it does not exist across machines; the restart policy is what holds there.
@@ -72,10 +75,12 @@ services:
       # is only handed to the api container. Run compose with --env-file ../.env (or from
       # the repository root, --env-file .env) to use the one that already holds it.
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?not set for interpolation - re-run with --env-file .env from the repo root, or export it}
-    # Deliberately not published. The API reaches it over the compose network; a
-    # published port is a second door to every national ID in the registry.
     expose:
       - "5432"
+    # Published on purpose, for local development: database clients on this machine
+    # connect to localhost:5432. On any machine with a public address this line is the
+    # open internet reading the registry - Docker bypasses ufw, so only a cloud firewall
+    # in deny-all stands in front of it. Deployment removes the mapping.
     ports:
       - "5432:5432"
     healthcheck:
