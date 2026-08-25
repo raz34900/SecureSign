@@ -1,4 +1,5 @@
 """The one place a customer's data encryption key is minted, unwrapped or destroyed."""
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
@@ -14,12 +15,28 @@ def key_for(db: Session, customer_id: str) -> bytes:
     """
     settings = get_settings()
     row = db.get(CustomerKey, customer_id)
-    if row is None:
-        dek = envelope.new_dek()
-        db.add(CustomerKey(customer_id=customer_id,
-                           wrapped_dek=envelope.wrap_dek(dek, settings.pii_enc_key)))
-        db.flush()
+    if row is not None:
+        return envelope.unwrap_dek(row.wrapped_dek, settings.pii_enc_key)
+
+    # Two verifications for the same new customer can both find no key and both insert.
+    # SQLite serialised writes and hid this; PostgreSQL does not. The insert goes in a
+    # savepoint so losing the race rolls back that statement alone - without it the whole
+    # session is poisoned, the audit write that follows raises PendingRollbackError, and
+    # a verdict that was already decided is never recorded.
+    dek = envelope.new_dek()
+    try:
+        with db.begin_nested():
+            db.add(CustomerKey(customer_id=customer_id,
+                               wrapped_dek=envelope.wrap_dek(dek, settings.pii_enc_key)))
         return dek
+    except IntegrityError:
+        pass
+
+    # Whoever won holds the key the other request's ciphertext will be sealed under, so
+    # theirs is the only correct answer here.
+    row = db.get(CustomerKey, customer_id)
+    if row is None:
+        raise RuntimeError(f"no data encryption key for customer {customer_id}")
     return envelope.unwrap_dek(row.wrapped_dek, settings.pii_enc_key)
 
 

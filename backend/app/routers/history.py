@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 from backend.app.auth.deps import CurrentUser, effective_roles, get_db, require_roles
 from backend.app.config import get_settings
 from backend.app.errors import AppError
-from backend.app.models_db import User
+from backend.app.models_db import User, iso_utc
 from backend.app.repositories import audit, customers as customers_repo
 from backend.app.repositories import feedback as feedback_repo
 from backend.app.repositories import verifications as verifications_repo
@@ -55,7 +55,7 @@ def _outcome_view(db: Session, verification_id: str) -> dict | None:
     actor = db.get(User, entry["user_id"]) if entry["user_id"] else None
     return {"outcome": entry["detail"].get("outcome"),
             "reason": entry["detail"].get("reason"),
-            "recorded_at": entry["at"].isoformat(),
+            "recorded_at": iso_utc(entry["at"]),
             "recorded_by": None if actor is None else actor.username}
 
 
@@ -107,7 +107,7 @@ def history(db: Session = Depends(get_db),
             "threshold_used": record.threshold_used,
             "confidence": record.confidence,
             "model_version": record.model_version,
-            "created_at": record.created_at.isoformat(),
+            "created_at": iso_utc(record.created_at),
             "customer_name": customer.full_name,
             "national_id_masked": _mask(decrypt_pii(customer.national_id_encrypted,
                                                     settings.pii_enc_key)),
@@ -147,7 +147,7 @@ def verification_detail(verification_id: str, db: Session = Depends(get_db),
         "threshold_used": record.threshold_used,
         "confidence": record.confidence,
         "model_version": record.model_version,
-        "created_at": record.created_at.isoformat(),
+        "created_at": iso_utc(record.created_at),
         "customer_name": None if customer is None else customer.full_name,
         "national_id_masked": None if customer is None else _mask(
             decrypt_pii(customer.national_id_encrypted, settings.pii_enc_key)),

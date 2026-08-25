@@ -118,7 +118,7 @@ def test_the_verdict_outlives_the_picture(client, seeded, session_factory):
         stored = db.get(Verification, row["request_id"])
         assert stored.query_image_encrypted, "the compared image is stored, encrypted"
         # Age the row past the window.
-        stored.created_at = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=91)
+        stored.created_at = datetime.now(UTC) - timedelta(days=91)
         db.commit()
 
         assert service.purge_expired_query_images(db) == 1

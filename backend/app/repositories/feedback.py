@@ -14,8 +14,12 @@ def add(db: Session, *, verification_id: str, submitted_by: str, source: str,
 
 
 def for_verification(db: Session, verification_id: str) -> ModelFeedback | None:
-    return db.execute(select(ModelFeedback).where(
-        ModelFeedback.verification_id == verification_id)).scalars().first()
+    # Ordered, because first() without one returns whatever the database reaches first:
+    # SQLite hands back insertion order and PostgreSQL hands back heap order, so with two
+    # reports on one verification the clerk sees a different one on each read.
+    return db.execute(select(ModelFeedback)
+                      .where(ModelFeedback.verification_id == verification_id)
+                      .order_by(ModelFeedback.created_at, ModelFeedback.id)).scalars().first()
 
 
 def list_with_context(db: Session, *, status: str | None = None,
@@ -25,7 +29,7 @@ def list_with_context(db: Session, *, status: str | None = None,
             .join(User, User.id == ModelFeedback.submitted_by)
             .join(Organisation, Organisation.id == User.org_id)
             .outerjoin(Verification, Verification.id == ModelFeedback.verification_id)
-            .order_by(ModelFeedback.created_at.desc())
+            .order_by(ModelFeedback.created_at.desc(), ModelFeedback.id.desc())
             .limit(limit))
     if status:
         stmt = stmt.where(ModelFeedback.status == status)
