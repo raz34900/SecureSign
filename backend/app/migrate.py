@@ -7,17 +7,20 @@ no data movement. Anything beyond that belongs in a real migration tool.
 """
 import logging
 
-from sqlalchemy import inspect, text
+from sqlalchemy import LargeBinary, String, inspect, text
+from sqlalchemy.types import TypeEngine
 from sqlalchemy.engine import Engine
 
 log = logging.getLogger("securesign")
 
-# table -> column -> DDL type. Additive only, and every column must be nullable, because
-# an existing row has no value to put in it.
-ADDED_COLUMNS: dict[str, dict[str, str]] = {
-    "verifications": {"query_image_path": "VARCHAR(255)",
-                      "query_image_encrypted": "BLOB"},
-    "reference_signatures": {"image_encrypted": "BLOB"},
+# table -> column -> type. Additive only, and every column must be nullable, because an
+# existing row has no value to put in it. These are SQLAlchemy types, not DDL strings:
+# the DDL is compiled for whichever database is connected, because BLOB is SQLite's
+# spelling and PostgreSQL has no such type at all.
+ADDED_COLUMNS: dict[str, dict[str, TypeEngine]] = {
+    "verifications": {"query_image_path": String(255),
+                      "query_image_encrypted": LargeBinary()},
+    "reference_signatures": {"image_encrypted": LargeBinary()},
 }
 
 
@@ -30,9 +33,10 @@ def apply(engine: Engine) -> list[str]:
         if table not in existing_tables:
             continue  # create_all just built it with every column present
         present = {column["name"] for column in inspector.get_columns(table)}
-        for name, ddl_type in columns.items():
+        for name, column_type in columns.items():
             if name in present:
                 continue
+            ddl_type = column_type.compile(dialect=engine.dialect)
             with engine.begin() as connection:
                 connection.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl_type}"))
             applied.append(f"{table}.{name}")

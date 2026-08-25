@@ -186,3 +186,35 @@ def test_engineer_cannot_reach_customer_or_verification_data(client, seeded):
     enter_panel(client)
     assert client.get(f"/customers/lookup/{NATIONAL_ID}").status_code == 403
     assert client.get("/verifications").status_code == 403
+
+
+def test_a_distance_lands_in_the_bucket_below_it_not_the_nearest_one(session_factory, seeded):
+    """Bucketing floors, on every database.
+
+    SQLite's CAST truncates and PostgreSQL's rounds, so casting the quotient directly put
+    0.27 in bucket 2 on one database and bucket 3 on the other, with nothing failing. The
+    values just under a boundary are the ones that move.
+    """
+    from backend.app.models_db import Customer, User, Verification
+    from backend.app.repositories.verifications import distance_buckets
+
+    with session_factory() as db:
+        user_id = db.query(User).filter_by(username="clerk1").one().id
+        customer = Customer(national_id_encrypted=b"x", national_id_index="idx-bucket",
+                            full_name="Bucket Test", enrolled_by_org_id=seeded["bank"])
+        db.add(customer)
+        db.flush()
+        for distance in (0.25, 0.27, 0.29, 0.35):
+            db.add(Verification(customer_id=customer.id,
+                                requesting_org_id=seeded["bank"], requesting_user_id=user_id,
+                                decision="FRAUD", distance=distance, confidence=50.0,
+                                threshold_used=0.3999, model_version="test"))
+        db.commit()
+        buckets = distance_buckets(db, width=0.1, count=20)
+
+    # 0.25, 0.27 and 0.29 floor into bucket 2; rounding would scatter them into 3.
+    # Values sitting exactly on a boundary are avoided on purpose: 0.30 / 0.1 is
+    # 2.9999999999999996 in binary floating point, so it floors to 2 on both databases
+    # and would test the float representation rather than the dialect.
+    assert buckets.get(2) == 3, buckets
+    assert buckets.get(3) == 1, buckets

@@ -28,18 +28,34 @@ services:
     env_file:
       - ../.env
     volumes:
+      # Only rows that predate the move into the database still read from here. A fresh
+      # PostgreSQL deployment never touches it.
       - ../data:/srv/securesign/data
+    # Waits for the database to answer, not merely to start. Without the condition the
+    # API boots first, create_all fails against a socket nobody is listening on, and the
+    # container restarts until it happens to win the race.
+    depends_on:
+      db:
+        condition: service_healthy
 
-  # db: enable when moving off SQLite - then set
-  # SS_DATABASE_URL=postgresql+psycopg://securesign:${POSTGRES_PASSWORD}@db:5432/securesign
-  # db:
-  #   image: postgres:16-alpine
-  #   environment:
-  #     POSTGRES_DB: securesign
-  #     POSTGRES_USER: securesign
-  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-  #   volumes:
-  #     - pgdata:/var/lib/postgresql/data
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: securesign
+      POSTGRES_USER: securesign
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    # Deliberately not published. The API reaches it over the compose network; a
+    # published port is a second door to every national ID in the registry.
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U securesign -d securesign"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
 
-# volumes:
-#   pgdata:
+volumes:
+  pgdata:

@@ -1,4 +1,4 @@
-from sqlalchemy import Integer, func, select
+from sqlalchemy import Integer, case, cast, func, select
 from sqlalchemy.orm import Session
 
 from backend.app.models_db import Customer, ModelFeedback, User, Verification
@@ -80,7 +80,12 @@ def distance_buckets(db: Session, width: float, count: int) -> dict[int, int]:
     distances and bucketed them in Python, so past 5000 verifications the histogram
     quietly stopped being the whole picture with nothing on screen saying so.
     """
-    index = func.min(func.cast(Verification.distance / width, Integer), count - 1)
+    # floor() then cast, and case() rather than min(). Two dialect traps here: SQLite's
+    # CAST truncates while PostgreSQL's rounds, which would silently move a distance of
+    # 0.27 between buckets; and SQLite's two-argument min() is a scalar while PostgreSQL's
+    # is an aggregate, which is an outright error. Both spellings below are ANSI.
+    raw = cast(func.floor(Verification.distance / width), Integer)
+    index = case((raw > count - 1, count - 1), else_=raw)
     rows = db.execute(select(index, func.count()).group_by(index)).all()
     return {int(bucket): int(total) for bucket, total in rows}
 

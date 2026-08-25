@@ -99,7 +99,10 @@ def purge_expired_query_images(db: Session, *, days: int = QUERY_IMAGE_RETENTION
     The row stays and its picture goes: history remains complete and auditable, and the
     registry stops holding a signature image it no longer has a reason to hold.
     """
-    cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=days)
+    # Aware, and left aware. PostgreSQL compares it against timestamptz directly; SQLite
+    # has no zone type and binds the UTC components, which is the same instant. Stripping
+    # the zone here was a SQLite habit that reads an hour wrong under any other database.
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     stale = db.execute(select(Verification).where(
         or_(Verification.query_image_encrypted.is_not(None),
             Verification.query_image_path.is_not(None)),
