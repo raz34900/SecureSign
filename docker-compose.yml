@@ -71,6 +71,17 @@ services:
       # same place as the backups it protects, and losing it loses every backup.
       PGBACKREST_REPO1_CIPHER_TYPE: aes-256-cbc
       PGBACKREST_REPO1_CIPHER_PASS: "${BACKUP_REPO_PASSPHRASE:?add BACKUP_REPO_PASSPHRASE to .env - generate one with openssl rand -hex 32}"
+      # At deployment, uncomment this block and put the values in .env to move the
+      # repository to S3; nothing else changes. It cannot stay uncommented with empty
+      # values - pgbackrest refuses an environment option without one - and this service
+      # never gets env_file, which would put SS_PII_ENC_KEY beside the ciphertext it
+      # protects. Passed one by one, on purpose.
+      # PGBACKREST_REPO1_TYPE: s3
+      # PGBACKREST_REPO1_S3_ENDPOINT: "${PGBACKREST_REPO1_S3_ENDPOINT}"
+      # PGBACKREST_REPO1_S3_BUCKET: "${PGBACKREST_REPO1_S3_BUCKET}"
+      # PGBACKREST_REPO1_S3_REGION: "${PGBACKREST_REPO1_S3_REGION}"
+      # PGBACKREST_REPO1_S3_KEY: "${PGBACKREST_REPO1_S3_KEY}"
+      # PGBACKREST_REPO1_S3_KEY_SECRET: "${PGBACKREST_REPO1_S3_KEY_SECRET}"
       # Interpolation reads the shell, or the .env beside THIS file - not ../.env, which
       # is only handed to the api container. Run compose with --env-file ../.env (or from
       # the repository root, --env-file .env) to use the one that already holds it.
