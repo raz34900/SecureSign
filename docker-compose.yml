@@ -4,6 +4,7 @@ services:
   frontend:
     build:
       context: ./frontend
+    restart: unless-stopped
     ports:
       - "8443:443"
       - "8080:80"    # redirects to 8443; nothing is served in the clear
@@ -21,6 +22,10 @@ services:
     build:
       context: .
       dockerfile: deploy/Dockerfile
+    # If the database is not there yet the app fails loudly and exits, on purpose - and
+    # this brings it back to try again. depends_on below orders startup on one host, but
+    # it does not exist across machines; the restart policy is what holds there.
+    restart: unless-stopped
     # Deliberately not published. nginx reaches it over the compose network, and the
     # engineering and account endpoints are hidden by an nginx rule - so a published
     # port is a second door into the API with nothing in front of it. Publish it
@@ -42,6 +47,7 @@ services:
 
   db:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_DB: securesign
       POSTGRES_USER: securesign
