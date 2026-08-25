@@ -43,7 +43,10 @@ services:
     environment:
       POSTGRES_DB: securesign
       POSTGRES_USER: securesign
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      # Interpolation reads the shell, or the .env beside THIS file - not ../.env, which
+      # is only handed to the api container. Run compose with --env-file ../.env (or from
+      # the repository root, --env-file .env) to use the one that already holds it.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?not set for interpolation - re-run with --env-file .env from the repo root, or export it}
     # Deliberately not published. The API reaches it over the compose network; a
     # published port is a second door to every national ID in the registry.
     expose:
