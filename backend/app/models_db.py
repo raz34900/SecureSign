@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Float, ForeignKey, LargeBinary, String, Text, UniqueConstraint
+from sqlalchemy import (DateTime, Float, ForeignKey, LargeBinary, String, Text,
+                        UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
 from backend.app.db import Base
@@ -15,6 +16,19 @@ def _now() -> datetime:
     return datetime.now(timezone.utc)
 
 
+# Every timestamp is stored with its zone. PostgreSQL keeps it and hands back an aware
+# datetime; SQLite has no zone type and hands back a naive one holding the same UTC
+# instant. Read them through as_utc() rather than assuming either.
+_TS = DateTime(timezone=True)
+
+
+def as_utc(value: datetime | None) -> datetime | None:
+    """A stored timestamp as an aware UTC datetime, whichever database returned it."""
+    if value is None:
+        return None
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
 class Organisation(Base):
     __tablename__ = "organisations"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
@@ -22,7 +36,7 @@ class Organisation(Base):
     name: Mapped[str] = mapped_column(String(120), unique=True)  # Bank A — display only
     type: Mapped[str] = mapped_column(String(20))  # financial | subscriber | operator
     is_active: Mapped[bool] = mapped_column(default=True)
-    created_at: Mapped[datetime] = mapped_column(default=_now)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
 
 
 class User(Base):
@@ -37,7 +51,7 @@ class User(Base):
     # An administrator who sets someone's password knows it; the account is not private
     # until its owner has replaced it, so nothing else works until they do.
     must_change_password: Mapped[bool] = mapped_column(default=False)
-    created_at: Mapped[datetime] = mapped_column(default=_now)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
 
 
 class Customer(Base):
@@ -49,7 +63,7 @@ class Customer(Base):
     full_name: Mapped[str] = mapped_column(String(120))
     enrolled_by_org_id: Mapped[str] = mapped_column(ForeignKey("organisations.id"))
     status: Mapped[str] = mapped_column(String(10), default="active")  # active | deleted
-    created_at: Mapped[datetime] = mapped_column(default=_now)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
 
 
 class ConsentRecord(Base):
@@ -57,7 +71,7 @@ class ConsentRecord(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     customer_id: Mapped[str] = mapped_column(ForeignKey("customers.id"))
     org_id: Mapped[str] = mapped_column(ForeignKey("organisations.id"))
-    granted_at: Mapped[datetime] = mapped_column(default=_now)
+    granted_at: Mapped[datetime] = mapped_column(_TS, default=_now)
     method: Mapped[str] = mapped_column(String(20))  # signed_form | in_person
 
 
@@ -70,7 +84,7 @@ class CustomerKey(Base):
     __tablename__ = "customer_keys"
     customer_id: Mapped[str] = mapped_column(ForeignKey("customers.id"), primary_key=True)
     wrapped_dek: Mapped[bytes] = mapped_column(LargeBinary)
-    created_at: Mapped[datetime] = mapped_column(default=_now)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
 
 
 class ReferenceSignature(Base):
@@ -85,7 +99,7 @@ class ReferenceSignature(Base):
     # predate the move; everything written now sets it.
     image_encrypted: Mapped[bytes | None] = mapped_column(LargeBinary, nullable=True)
     embedding: Mapped[bytes] = mapped_column(LargeBinary)  # 128 float32 = 512 bytes
-    created_at: Mapped[datetime] = mapped_column(default=_now)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
 
 
 class Verification(Base):
@@ -99,7 +113,7 @@ class Verification(Base):
     threshold_used: Mapped[float] = mapped_column(Float)
     confidence: Mapped[float] = mapped_column(Float)
     model_version: Mapped[str] = mapped_column(String(40))
-    created_at: Mapped[datetime] = mapped_column(default=_now)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
     # The normalised 224x224 the model actually compared, not the photograph submitted.
     # Nullable: rows predating this, and rows whose image has passed its retention window,
     # keep their verdict and lose only the picture.
@@ -110,7 +124,7 @@ class Verification(Base):
 class AuditLog(Base):
     __tablename__ = "audit_log"
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
-    at: Mapped[datetime] = mapped_column(default=_now)
+    at: Mapped[datetime] = mapped_column(_TS, default=_now)
     user_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     org_id: Mapped[str | None] = mapped_column(String(36), nullable=True)
     action: Mapped[str] = mapped_column(String(60))
@@ -132,7 +146,7 @@ class ModelFeedback(Base):
     claimed_label: Mapped[str] = mapped_column(String(10))               # genuine | forged
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     model_version: Mapped[str] = mapped_column(String(40))
-    created_at: Mapped[datetime] = mapped_column(default=_now)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
 
 
 class SessionRow(Base):
@@ -140,6 +154,6 @@ class SessionRow(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=_uuid)
     token_hash: Mapped[str] = mapped_column(String(64), unique=True)
     user_id: Mapped[str] = mapped_column(ForeignKey("users.id"))
-    created_at: Mapped[datetime] = mapped_column(default=_now)
-    expires_at: Mapped[datetime] = mapped_column()
-    revoked_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    created_at: Mapped[datetime] = mapped_column(_TS, default=_now)
+    expires_at: Mapped[datetime] = mapped_column(_TS)
+    revoked_at: Mapped[datetime | None] = mapped_column(_TS, nullable=True)

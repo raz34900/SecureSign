@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.app.models_db import SessionRow
+from backend.app.models_db import SessionRow, as_utc
 
 
 def _hash(token: str) -> str:
@@ -24,8 +24,7 @@ def resolve_session(db: Session, token: str) -> SessionRow | None:
     row = db.execute(select(SessionRow).where(SessionRow.token_hash == _hash(token))).scalar_one_or_none()
     if row is None or row.revoked_at is not None:
         return None
-    expires = row.expires_at if row.expires_at.tzinfo else row.expires_at.replace(tzinfo=timezone.utc)
-    if expires < datetime.now(timezone.utc):
+    if as_utc(row.expires_at) < datetime.now(timezone.utc):
         return None
     return row
 

@@ -1,9 +1,12 @@
 import hashlib
+import os
+import uuid
 
 import numpy as np
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from sqlalchemy import text
 from sqlalchemy.pool import StaticPool
 
 from backend.app.auth.passwords import hash_password
@@ -21,11 +24,37 @@ class FakeEmbedder:
         return v / np.linalg.norm(v)
 
 
+# The suite runs on in-memory SQLite unless SS_TEST_DATABASE_URL names a PostgreSQL
+# server, in which case every test gets its own schema on it and drops it afterwards.
+# Both are worth running: SQLite is what a developer has, PostgreSQL is what production
+# is, and a suite that only exercises the first proves nothing about the second.
+TEST_DATABASE_URL = os.environ.get("SS_TEST_DATABASE_URL", "")
+
+
 @pytest.fixture
 def session_factory():
-    engine = make_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    if not TEST_DATABASE_URL:
+        engine = make_engine("sqlite://", connect_args={"check_same_thread": False},
+                             poolclass=StaticPool)
+        Base.metadata.create_all(engine)
+        yield make_session_factory(engine)
+        return
+
+    # A schema per test, so tests are isolated without paying for a database each time.
+    schema = f"t_{uuid.uuid4().hex[:12]}"
+    admin = make_engine(TEST_DATABASE_URL)
+    with admin.begin() as connection:
+        connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+    engine = make_engine(TEST_DATABASE_URL,
+                         connect_args={"options": f"-csearch_path={schema}"})
     Base.metadata.create_all(engine)
-    return make_session_factory(engine)
+    try:
+        yield make_session_factory(engine)
+    finally:
+        engine.dispose()
+        with admin.begin() as connection:
+            connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()
 
 
 @pytest.fixture
