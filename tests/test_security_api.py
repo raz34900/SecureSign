@@ -81,7 +81,7 @@ def test_the_api_is_not_published_on_the_host():
     """A published API port is a second door with no nginx on it: the engineering and
     account endpoints are hidden by an nginx rule, and a request that never passes
     through nginx never meets it. nginx reaches the API over the compose network."""
-    compose = (REPO_ROOT / "deploy" / "docker-compose.yml").read_text()
+    compose = (REPO_ROOT / "docker-compose.yml").read_text()
     api_block = compose.split("  api:")[1].split("\n  #")[0]
     assert "8000:8000" not in api_block
     assert "expose:" in api_block
