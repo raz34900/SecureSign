@@ -15,6 +15,12 @@ def make_engine(url: str, **kwargs) -> Engine:
     # at boot rather than saying which driver it wanted. Name the driver we ship.
     if url.startswith("postgresql://"):
         url = url.replace("postgresql://", "postgresql+psycopg://", 1)
+    if url.startswith("postgresql"):
+        # A pooled connection whose socket died quietly - an idle timeout on a firewall
+        # between machines, a database restart - is otherwise handed out as-is, and the
+        # first request after the outage pays for it. The ping costs one round trip per
+        # checkout and makes recovery invisible instead of one-error-then-fine.
+        kwargs.setdefault("pool_pre_ping", True)
     if url.startswith("sqlite"):
         kwargs.setdefault("connect_args", {"check_same_thread": False})
     return create_engine(url, **kwargs)
