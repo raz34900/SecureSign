@@ -1,7 +1,9 @@
+name: securesign
+
 services:
   frontend:
     build:
-      context: ../frontend
+      context: ./frontend
     ports:
       - "8443:443"
       - "8080:80"    # redirects to 8443; nothing is served in the clear
@@ -11,13 +13,13 @@ services:
     volumes:
       # Writable: the container generates a self-signed certificate here on first start
       # if none exists. Production drops a real server.crt/server.key in and it no-ops.
-      - ./tls:/etc/nginx/tls
+      - ./deploy/tls:/etc/nginx/tls
     depends_on:
       - api
 
   api:
     build:
-      context: ..
+      context: .
       dockerfile: deploy/Dockerfile
     # Deliberately not published. nginx reaches it over the compose network, and the
     # engineering and account endpoints are hidden by an nginx rule — so a published
@@ -26,11 +28,11 @@ services:
     expose:
       - "8000"
     env_file:
-      - ../.env
+      - .env
     volumes:
       # Only rows that predate the move into the database still read from here. A fresh
       # PostgreSQL deployment never touches it.
-      - ../data:/srv/securesign/data
+      - ./data:/srv/securesign/data
     # Waits for the database to answer, not merely to start. Without the condition the
     # API boots first, create_all fails against a socket nobody is listening on, and the
     # container restarts until it happens to win the race.
