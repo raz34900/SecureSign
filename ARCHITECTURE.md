@@ -281,74 +281,128 @@ comparable, and a test enforces that too.
 
 ## Code map
 
-**`backend/app/`** — the API. Layers by convention, not enforcement:
-`routers/` (HTTP, role guards) → `services/` (enrolment, verification, accounts,
-engineering) → `repositories/` (queries) → `models_db.py` (schema, `as_utc`, `iso_utc`).
-`auth/` holds sessions, argon2 passwords, the login throttle, and `require_roles` — the
-single gate that enforces roles *and* the must-change-password rule. `security/` is
-~75 lines: `crypto.py` (seal/unseal, blind_index) and `envelope.py` (DEK wrap, AAD).
-The real edges are looser than the ideal ones: routers query repositories directly and
-`auth.py` runs its own ORM selects. That is accepted; what is *not* accepted is crypto
-or scoping outside their single homes.
-**Architecture Invariant:** `repositories/audit.py.write()` **commits the session** —
-every audit call is a transaction boundary, and `verification.run` relies on it to land
-the verdict, the image, and the audit row atomically.
+```
+securesign/
+├── backend/app/            the API
+│   ├── main.py             create_app factory: keys checked, schema, model, routers
+│   ├── routers/            HTTP endpoints + role guards, one file per surface
+│   ├── services/           enrolment, verification, accounts, engineering
+│   ├── repositories/       queries; audit.py is the append-only trail
+│   ├── auth/               sessions, argon2, login throttle, require_roles
+│   ├── security/           crypto.py + envelope.py, ~75 lines, all of the crypto
+│   ├── models_db.py        schema, as_utc / iso_utc
+│   └── migrate.py          additive-only column adds, dialect-compiled
+├── packages/signature_core/  the model pipeline, importable as signature_core
+├── frontend/src/           Vue 3 SPA
+├── deploy/                 Dockerfiles, pgbackrest.conf, tls/
+├── scripts/                bootstrap, seeds, migration, backup drill, re-embed
+└── tests/                  one suite, runs on SQLite and on PostgreSQL
+```
 
-**`packages/signature_core/`** — the model pipeline, importable as `signature_core`.
-Frozen: `anchors.py`, `preprocess.py`, `embed.py`, `model.py`. Not frozen: `cleanup.py`
-(illumination, ink isolation, `candidate_crops`), `quality.py`, `decision.py`
-(threshold 0.3999, borderline margin 0.05 — the band is decided server-side, never
-recomputed by a client).
+### backend/app
 
-**`frontend/`** — Vue 3 SPA. `router.js` guards by role; `accessRules.js` is the role
-table as plain data; `auth.js` mirrors the server's `IMPLIED_ROLES` expansion so an
-org_admin sees the navigation its organisation type earns. `api.js` is the one HTTP
-client: `/api` base, error envelope, 401 handler clears the session state.
-**Architecture Invariant:** `npm run build` runs `routing.check.mjs` first — a routing
-rule that would strand an account fails the Docker image build.
+Layered by convention — `routers → services → repositories → models_db` — not by
+enforcement: routers query repositories directly, and `auth.py` runs its own ORM
+selects. That looseness is accepted. What is not negotiable is that crypto lives only
+in `security/` (+ the DEK handling in `repositories/customer_keys.py`) and org scoping
+lives only in the repository query helpers.
 
-**`deploy/`** — `Dockerfile` (CPU-only torch installed *before* source, so code edits
-never reinstall it), `db.Dockerfile` (postgres + pgBackRest + stanza init),
-`pgbackrest.conf`, `tls/` (bind-mounted; self-signed pair generated on first start when
-empty, production drops a real pair in).
+- `routers/` — request/response shape, role guards, nothing clever.
+- `services/` — the flows: `enrolment.py` (staged wizard, atomic approve),
+  `verification.py` (the verify pipeline, retention purge), `accounts.py` (provisioning,
+  password policy), `engineering.py` (aggregates only, never a name or an image).
+- `auth/deps.py` — `require_roles`, the single chokepoint: role check, and the
+  must-change-password gate that makes a handed-out password useless for anything else.
+- `security/` — `seal`/`unseal` (AES-256-GCM), `blind_index` (HMAC), DEK wrap/unwrap.
 
-**`scripts/`** — operational, each self-verifying: `bootstrap.py` (first account,
-refuses to run twice), `seed_demo.py`, `migrate_sqlite_to_postgres.py` (byte-exact,
-digest-verified, decrypt-verified with a negative AAD control),
-`encrypt_stored_images.py` (legacy backfill), `backup_drill.sh` (the restore rehearsal),
-`reembed_references.py` (rebuild embeddings when the transform changes — the reason
-references are stored at cut resolution, not 224×224).
+> **Invariant — audit is the commit.** `repositories/audit.py` `write()` commits the
+> session. Every audit call is a transaction boundary, and `verification.run` relies on
+> it to land the verdict, the image, and the audit row atomically. Move an audit call
+> and you move a commit.
 
-**`tests/`** — one suite, two databases: in-memory SQLite by default,
-`SS_TEST_DATABASE_URL` gives every test its own schema on real PostgreSQL. Queries must
-mean the same thing on both; two real dialect bugs (CAST rounding, two-argument min)
-are pinned by tests.
+### packages/signature_core
+
+| Module | Role | Frozen |
+|---|---|---|
+| `anchors.py` | find signature regions on a specimen card | **yes** |
+| `preprocess.py` | `UnifiedSignatureTransform`: binarise, deskew, crop, 224×224 | **yes** |
+| `embed.py`, `model.py` | the CNN, image → 128 floats | **yes** |
+| `cleanup.py` | illumination flattening, ink isolation, `candidate_crops` | no |
+| `quality.py` | is this decodable, lit, signature-shaped | no |
+| `decision.py` | threshold 0.3999, borderline band ±0.05 | no |
+
+> **Invariant — the frozen pipeline.** The frozen modules are shared with training;
+> cleanup wraps them and never enters them, or the weights stop matching what they were
+> fitted to. `tests/test_cleanup.py` reads their source and fails on contamination.
+> The band is decided server-side and never recomputed by a client.
+
+### frontend/src
+
+- `router.js` + `accessRules.js` — role-guarded routes; the role table is plain data so
+  it can be checked headlessly.
+- `auth.js` — session state; mirrors the server's `IMPLIED_ROLES` so an org_admin sees
+  the navigation its organisation type earns.
+- `api.js` — the one HTTP client: `/api` base, error envelope, 401 clears the session.
+
+> **Invariant — the build gate.** `npm run build` runs `routing.check.mjs` first: a
+> routing rule that would strand an account fails the Docker image build itself.
+
+### deploy/ and scripts/
+
+- `deploy/Dockerfile` — CPU-only torch installed *before* the source layers, so a code
+  edit never reinstalls it. `db.Dockerfile` — postgres + pgBackRest + stanza init.
+  `tls/` — bind-mounted; a self-signed pair is generated on first start if empty,
+  production drops a real pair in and the generator no-ops.
+- `scripts/` — each operational script verifies its own work: the SQLite→PostgreSQL
+  migration digest-checks every ciphertext row and ends with a decrypt test including a
+  negative wrong-AAD control; `backup_drill.sh` restores into a scratch container and
+  proves a reference still decrypts; `reembed_references.py` exists because references
+  are stored at cut resolution precisely so embeddings can be rebuilt when the
+  transform changes.
 
 ## Cross-cutting invariants
 
-- **404, never 403.** A record belonging to another organisation answers 404 —
-  a 403 confirms the identifier exists. Scope always comes from the session, never
-  from the request.
-- **Every image read is audited.** Reference views, verification details, the stored
-  compared image — each read writes an audit row. Sign-in itself writes none (only
-  throttle state); denials write `outcome: denied`.
-- **Fail closed.** Database unreachable → 503 with Retry-After (`errors.py`, the
-  OperationalError handler). `/health` is process-only liveness; `/ready` is the
-  database-touching signal for monitors. Restart policy, not in-app retries, handles
-  a database that is late: the API fails loudly and the platform relaunches it.
-- **Timestamps carry their zone.** Read through `as_utc`, serialised through `iso_utc`;
-  SQLite returns naive, PostgreSQL aware, and a uniform shift preserves ordering — so
-  nothing looks wrong while a retention purge deletes early.
-- **Erasure is key destruction.** Deleting a `customer_keys` row voids that customer's
-  images in the live database and every backup at once. Honest current state: the
-  primitive exists and is tested, but no production endpoint calls it yet —
-  `DELETE /customers/{id}` soft-deletes only.
-- **Single process.** The login throttle, staged enrolments, and the retention-purge
-  timer live in process memory. Correct at one API instance; the first thing that must
-  move out of process if the API ever scales horizontally.
-- **Known asymmetries, accepted.** The internal 8081 listener sends no security headers
-  on `/api/` responses and does not rate-limit login at the edge — it is reachable from
-  the host loopback only, which is the control. The `/verify` endpoint embeds whatever
-  image it is given; ink isolation happens in `/verify/regions`, and the two paths
-  converge only when the client routes through region selection first — by design, since
-  only the clerk knows which mark on a page is the signature.
+Rules that no single directory owns. Each is enforced somewhere concrete — grep the
+name to find it.
+
+**404, never 403.**
+A record belonging to another organisation answers 404 — a 403 confirms the identifier
+exists, which is itself a leak. Scope always derives from the session, never from
+anything in the request. Enforced in the `get_scoped` / `get_for_org` query helpers;
+probed by `tests/test_idor.py`.
+
+**Every image read is audited. Sign-in is not.**
+Reference views, verification details, the stored compared image — each read writes an
+audit row, and denials are recorded with `outcome: denied`. Login writes no audit row —
+only throttle state. The code states no rationale; the observable consequence is that an
+unauthenticated endpoint cannot grow the audit log.
+
+**Fail closed, and say which failure it is.**
+Database unreachable → `503` with `Retry-After`, never a cached or degraded answer — a
+verdict from stale data is a security check failing open. `/health` is process-only
+liveness (a restart cannot fix a dead database); `/ready` is the database-touching
+signal for monitors. A database that is *late* is handled by the restart policy, not by
+in-app retry loops: the API fails loudly and the platform relaunches it.
+
+**Timestamps carry their zone.**
+Read through `as_utc`, serialised through `iso_utc`. SQLite returns naive datetimes,
+PostgreSQL aware ones, and a uniform shift preserves ordering — nothing on screen looks
+wrong while a retention purge deletes early. That failure mode is why the helpers exist.
+
+**Erasure is key destruction.**
+Deleting a `customer_keys` row voids that customer's images in the live database and in
+every backup ever taken, at once. Honest current state: the primitive
+(`customer_keys.destroy`) exists and is tested, but no production endpoint calls it —
+`DELETE /customers/{id}` soft-deletes only.
+
+**One process, and it matters.**
+The login throttle, staged enrolments (plaintext ID and crops included), and the
+retention-purge timer live in process memory. Correct at exactly one API instance;
+the first things that must move out of process if the API ever scales horizontally.
+
+**Accepted asymmetries.**
+The internal 8081 listener sends no security headers on `/api/` responses and does not
+edge-throttle login — being reachable only from the host loopback *is* the control.
+`/verify` embeds whatever image it is given; ink isolation happens in `/verify/regions`,
+and the two preparations converge only when the client routes through region selection —
+by design, because only the clerk knows which mark on a page is the signature.
