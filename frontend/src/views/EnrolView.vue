@@ -2,7 +2,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { get, postJson, postForm, ApiError } from '../api.js'
-import { assessCapture } from '../capture.js'
+import { assessCapture, downscaleForUpload } from '../capture.js'
 import { save as saveWizard, load as loadWizard, clear as clearWizard } from '../enrolStorage.js'
 import { noticeClass, pngSrc } from '../format.js'
 import CaptureGuide from '../components/CaptureGuide.vue'
@@ -78,7 +78,8 @@ function onFileSelected(e) {
   if (file) selectCard(file)
 }
 
-function selectCard(file) {
+async function selectCard(picked) {
+  const file = await downscaleForUpload(picked)
   if (cardPreviewUrl.value) URL.revokeObjectURL(cardPreviewUrl.value)
   cardFile.value = file
   cardPreviewUrl.value = URL.createObjectURL(file)
@@ -125,12 +126,13 @@ function openExtraPhotoPicker() {
 }
 
 async function addAnotherPhoto(event) {
-  const file = event.target.files?.[0]
+  const picked = event.target.files?.[0]
   event.target.value = ''
-  if (!file || addingPhoto.value) return
+  if (!picked || addingPhoto.value) return
   addingPhoto.value = true
   step3Error.value = null
   try {
+    const file = await downscaleForUpload(picked)
     const formData = new FormData()
     formData.append('file', file)
     const res = await postForm(`/customers/${enrolmentId.value}/card`, formData)

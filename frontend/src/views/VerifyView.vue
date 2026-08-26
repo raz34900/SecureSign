@@ -2,7 +2,7 @@
 import { computed, nextTick, ref } from 'vue'
 import { postForm, postJson, ApiError } from '../api.js'
 import { isClerk } from '../auth.js'
-import { assessCapture } from '../capture.js'
+import { assessCapture, downscaleForUpload } from '../capture.js'
 import CaptureGuide from '../components/CaptureGuide.vue'
 import {
   formatConfidence,
@@ -277,9 +277,10 @@ function anchorAlt(anchor) {
 
 const captureTheme = computed(() => noticeClass(captureNotice.value?.level ?? 'warning'))
 
-function handleFileChange(event) {
-  const chosen = event.target.files && event.target.files[0]
-  if (!chosen) return
+async function handleFileChange(event) {
+  const picked = event.target.files && event.target.files[0]
+  if (!picked) return
+  const chosen = await downscaleForUpload(picked)
   setFile(chosen)
   findRegions(chosen)
   assessFile(chosen)
