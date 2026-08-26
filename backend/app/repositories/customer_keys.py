@@ -1,10 +1,15 @@
 """The one place a customer's data encryption key is minted, unwrapped or destroyed."""
+import logging
+
+from cryptography.exceptions import InvalidTag
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from backend.app.config import get_settings
 from backend.app.models_db import CustomerKey
 from backend.app.security import envelope
+
+log = logging.getLogger("securesign")
 
 
 def key_for(db: Session, customer_id: str) -> bytes:
@@ -41,12 +46,23 @@ def key_for(db: Session, customer_id: str) -> bytes:
 
 
 def existing_key_for(db: Session, customer_id: str) -> bytes | None:
-    """None when there is no key - either nothing was ever encrypted for this customer,
-    or the key was destroyed and the images are gone for good."""
+    """None when the key cannot be had - never minted, destroyed, or corrupted.
+
+    A wrapped key that fails to unwrap is accidental erasure: the images are exactly as
+    unreadable as if the row had been deleted, so the read paths must degrade the same
+    way instead of failing whole pages. Logged as an error because the cause is either
+    a damaged row (one customer) or a wrong SS_PII_ENC_KEY (every customer at once),
+    and the log pattern is what tells the operator which.
+    """
     row = db.get(CustomerKey, customer_id)
     if row is None:
         return None
-    return envelope.unwrap_dek(row.wrapped_dek, get_settings().pii_enc_key)
+    try:
+        return envelope.unwrap_dek(row.wrapped_dek, get_settings().pii_enc_key)
+    except InvalidTag:
+        log.error("customer %s: wrapped key did not unwrap - corrupted row or wrong "
+                  "SS_PII_ENC_KEY; this customer's images are unreadable", customer_id)
+        return None
 
 
 def destroy(db: Session, customer_id: str) -> bool:
