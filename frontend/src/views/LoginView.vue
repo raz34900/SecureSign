@@ -32,7 +32,7 @@ async function handleSubmit() {
   <div class="grid min-h-screen grid-rows-[auto_1fr] lg:grid-cols-[5fr_7fr] lg:grid-rows-1">
     <!-- The registry identifies itself before asking who you are. On a narrow screen it
          collapses to a band rather than stacking a full panel above the form. -->
-    <aside class="flex flex-col gap-16 bg-navy px-6 py-6 text-ink-inverse sm:px-10 lg:justify-between lg:px-14 lg:py-14">
+    <aside class="flex flex-col gap-16 bg-navy-ground px-6 py-6 text-ink-inverse sm:px-10 lg:justify-between lg:px-14 lg:py-14">
       <div class="flex items-center gap-3">
         <BrandMark :size="34" title="SecureSign" class="shrink-0" />
         <span class="text-xl font-semibold tracking-tight">SecureSign</span>
