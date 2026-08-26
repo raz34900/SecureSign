@@ -1,10 +1,15 @@
+import io
+
 import numpy as np
 import torch
 from PIL import Image, ImageDraw
 
+from signature_core.anchors import extract_vertical_anchors
+from signature_core.embed import Embedder
 from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.model import CustomSiameseCNN
 from signature_core.decision import THRESHOLD, calculate_confidence, decide, mean_distance
+from signature_core.quality import validate_image_quality
 
 
 def make_signature(seed: int = 1, size: tuple[int, int] = (400, 200)) -> Image.Image:
@@ -50,13 +55,6 @@ def test_decide_valid_and_fraud():
     assert d.threshold == THRESHOLD
     # strict <: exactly at threshold is FRAUD
     assert decide([THRESHOLD]).verdict == "FRAUD"
-
-
-import io
-
-from signature_core.anchors import extract_vertical_anchors
-from signature_core.embed import Embedder
-from signature_core.quality import validate_image_quality
 
 
 def make_specimen_card(n: int = 9, variant: int = 0) -> bytes:
