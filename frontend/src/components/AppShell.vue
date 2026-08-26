@@ -54,7 +54,7 @@ async function handleLogout() {
   <div v-else class="min-h-screen w-full lg:grid lg:grid-cols-[15rem_minmax(0,1fr)]">
     <!-- A persistent rail, so content keeps the whole remaining width instead of sitting
          in a centred column with the screen empty on either side of it. -->
-    <aside class="flex flex-col bg-navy text-ink-inverse lg:sticky lg:top-0 lg:h-screen">
+    <aside class="flex flex-col bg-navy-ground text-ink-inverse lg:sticky lg:top-0 lg:h-screen">
       <div class="flex items-center justify-between gap-3 px-4 py-3 lg:px-5 lg:py-4">
         <span class="flex items-center gap-2.5">
           <BrandMark :size="20" class="shrink-0" />

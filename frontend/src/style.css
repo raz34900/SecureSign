@@ -9,6 +9,9 @@
   --color-navy: oklch(0.349 0.117 262);
   --color-navy-deep: oklch(0.296 0.104 262);
   --color-navy-soft: oklch(0.45 0.095 262);
+  /* The ground the shield mark sits on. Darker than both of the mark's own navies, so
+     the mark keeps its exact brand colours and still reads against it. */
+  --color-navy-ground: oklch(0.23 0.07 262);
   --color-brand-green: oklch(0.678 0.196 140);
   --color-brand-green-deep: oklch(0.58 0.17 141);
 
@@ -103,7 +106,6 @@ html {
   scrollbar-color: var(--color-border-strong) var(--color-canvas);
   caret-color: var(--color-navy);
 }
-
 /* iOS zooms the page in when a field with text under 16px takes focus, and does not zoom
    back out afterwards. Hold fields at 16px wherever a touch keyboard is likely; the
    alternative, a maximum-scale on the viewport, stops the zoom by taking pinch-zoom away
