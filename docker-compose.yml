@@ -5,12 +5,19 @@ services:
     build:
       context: ./frontend
     restart: unless-stopped
+    # Development answers on 8443/8080. Deployment sets PUBLIC_TLS_PORT=443,
+    # PUBLIC_HTTP_PORT=80 and PUBLIC_SERVER_NAME=<domain> in .env and touches nothing
+    # else: the same variable feeds the port mapping here and the redirect target
+    # inside nginx, so the two cannot drift apart.
     ports:
-      - "8443:443"
-      - "8080:80"    # redirects to 8443; nothing is served in the clear
+      - "${PUBLIC_TLS_PORT:-8443}:443"
+      - "${PUBLIC_HTTP_PORT:-8080}:80"    # redirects to the TLS port; nothing is served in the clear
       # Engineering panel and account provisioning. Bound to the host loopback, so it is
       # unreachable from the network no matter what the firewall says.
       - "127.0.0.1:8081:8081"
+    environment:
+      PUBLIC_TLS_PORT: ${PUBLIC_TLS_PORT:-8443}
+      PUBLIC_SERVER_NAME: ${PUBLIC_SERVER_NAME:-}
     volumes:
       # Writable: the container generates a self-signed certificate here on first start
       # if none exists. Production drops a real server.crt/server.key in and it no-ops.
