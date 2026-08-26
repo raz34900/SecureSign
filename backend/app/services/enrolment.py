@@ -98,7 +98,12 @@ def stage(db: Session, national_id: str, full_name: str, consent_granted: bool,
     _store[enrolment_id] = _Staged(national_id=national_id, full_name=full_name,
                                    consent_method=consent_method, org_id=org_id, user_id=user_id,
                                    target_customer_id=existing.id if existing else None)
-    return {"enrolment_id": enrolment_id, "mode": "append" if existing else "new"}
+    result = {"enrolment_id": enrolment_id, "mode": "append" if existing else "new"}
+    if existing:
+        # Appending never renames: the record keeps the name it was registered under, so
+        # that is the name the wizard must show rather than whatever was just typed.
+        result["registered_name"] = existing.full_name
+    return result
 
 
 def attach_card(enrolment_id: str, image_bytes: bytes, org_id: str) -> list[dict]:
