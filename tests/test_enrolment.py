@@ -56,11 +56,15 @@ def test_existing_national_id_stages_append_mode(client, seeded):
     append, and the submitted signatures are checked against the existing references."""
     login(client, "BA11", "clerk1")
     do_full_enrolment(client, "123456780")
-    r = client.post("/customers", json=enrol_body("123456780"))
+    body = enrol_body("123456780")
+    body["full_name"] = "Some Other Spelling"
+    r = client.post("/customers", json=body)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["mode"] == "append"
     assert body["enrolment_id"]
+    # Appending never renames, so the wizard is told the name the record actually keeps.
+    assert body["registered_name"] == "Test Person"
 
 
 def test_new_national_id_stages_new_mode(client, seeded):
@@ -68,6 +72,7 @@ def test_new_national_id_stages_new_mode(client, seeded):
     r = client.post("/customers", json=enrol_body("123456779"))
     assert r.status_code == 200, r.text
     assert r.json()["mode"] == "new"
+    assert "registered_name" not in r.json()
 
 
 def test_card_with_fewer_than_eight_signatures(client, seeded):

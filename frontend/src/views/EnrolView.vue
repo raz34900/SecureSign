@@ -52,6 +52,8 @@ async function submitStep1() {
     })
     enrolmentId.value = res.enrolment_id
     enrolMode.value = res.mode
+    // Append keeps the registered name; show that, not what was typed.
+    if (res.registered_name) fullName.value = res.registered_name
     step.value = 2
   } catch (err) {
     step1Error.value = err.message || 'Failed to start enrolment.'
