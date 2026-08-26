@@ -1,9 +1,24 @@
 # Architecture
 
 How SecureSign is built: top-down from the system boundary to the code, then bottom-up
-from a signature pixel to a verdict row. Names in this file are grep-stable symbols, not
-links — search for them. For how to run it, see DEPLOYMENT.md; for the data-protection
-design in depth, docs/DATA-SECURITY.md.
+from a signature pixel to a verdict row.
+
+**Companion documents:** [README.md](README.md) — what the system is ·
+[DEPLOYMENT.md](DEPLOYMENT.md) — how to run it.
+
+Code names in this file are grep-stable symbols, not links — search for them.
+
+| Section | The question it answers |
+|---|---|
+| [Bird's eye view](#birds-eye-view) | What is this, and which three goals outrank everything else? |
+| [System context](#system-context) | Who talks to it? |
+| [Containers and trust boundaries](#containers-and-trust-boundaries) | Where are the walls, and what crosses them? |
+| [Key custody](#key-custody) | Which key lives where, and what dies with it? |
+| [Runtime scenarios](#runtime-scenarios) | Sign-in, verification, enrolment — step by step |
+| [Data model](#data-model) | Which tables exist, and why they relate the way they do |
+| [Bottom-up: a pixel becomes a verdict](#bottom-up-a-pixel-becomes-a-verdict) | The model pipeline, and what in it is frozen |
+| [Code map](#code-map) | Which directory owns what |
+| [Cross-cutting invariants](#cross-cutting-invariants) | Rules no single directory owns |
 
 ## Bird's eye view
 
@@ -76,7 +91,7 @@ flowchart LR
     B -->|"8443 tls"| NG
     B -.->|"8080 http: redirect only"| NG
     OP -->|"127.0.0.1:8081 tls"| NG
-    DBC -->|"5432, removed at deploy"| PG
+    DBC -->|"127.0.0.1:5432"| PG
     NG -->|"http api:8000"| UV
     UV -->|"pg wire, plaintext params<br/>PII already ciphertext"| PG
     PG -->|"archive_command per WAL segment"| PBR
@@ -101,9 +116,6 @@ Boundary claims, each load-bearing:
   national ID is sealed by the application before the SQL is sent, so the database link
   never carries a plaintext identifier. The exception is `full_name`, plaintext by
   design everywhere.
-- Port 5432 is published for local development and is flagged in the compose file for
-  removal at deployment. Port 80 only redirects; unknown Host headers get the connection
-  closed (444) because a reflected Host in a redirect is an open redirect.
 
 ## Key custody
 
@@ -161,22 +173,28 @@ sequenceDiagram
     participant M as Model in-process
     participant D as PostgreSQL
     B->>A: POST /verify (image, national id)
-    A->>A: size, pixel-bomb, quality checks
+    A->>A: size and pixel-bomb limits
     A->>D: find customer by blind_index(id)
+    D-->>A: customer row, or nothing
     alt no customer, or not this registry's
         A-->>B: 404 CUSTOMER_NOT_FOUND
     end
-    A->>M: embed(pad_for_rotation(image)) -> 128 floats
-    A->>D: load every reference embedding (all organisations)
+    alt image fails quality
+        A-->>B: 422 INVALID_IMAGE
+    end
+    A->>M: embed(pad_for_rotation(image))
+    M-->>A: 128-float embedding
+    A->>D: load every reference (all organisations)
+    D-->>A: reference rows + embeddings
     A->>A: L2 distance per reference, decide(mean, 0.3999), band +-0.05
     A->>D: insert verification row
     A->>A: normalise to 224x224, encrypt under customer DEK, AAD = row id
     A->>D: audit "verify" - this commit lands row, image, audit together
-    A-->>B: verdict, band, distance, similarity, compared image
     opt caller is a clerk
-        A->>D: decrypt reference images, audit "view_references"
-        A-->>B: references for side-by-side comparison
+        A->>A: decrypt references, per-reference distances
+        A->>D: audit "view_references"
     end
+    A-->>B: one response - verdict, band, distance, similarity, compared image, references for clerks
 ```
 
 Storing the compared image is **best-effort by design**: a verdict must never fail to be
