@@ -2,6 +2,12 @@
 /** Longest edge of the working copy. Small enough to be instant, large enough to be honest. */
 const MAX_EDGE = 480
 
+/** Longest edge of anything sent to the server. The model reads 224x224 after the
+ *  server's own transform, extraction still has hundreds of pixels per signature at
+ *  this size, and a phone's 12MP original is seconds of server CPU spent on pixels
+ *  that are thrown away. */
+const UPLOAD_MAX_EDGE = 2000
+
 /** Below this mean luminance the server refuses the image outright. */
 const DARK_MEAN = 80
 
@@ -90,6 +96,47 @@ function measure(image) {
   }
 
   return { mean, inkFraction: ink / count, paperFraction: paper / count }
+}
+
+/**
+ * A picked photograph, resized so its longest edge is at most UPLOAD_MAX_EDGE.
+ * Anything that stops the resize - an odd format, an old browser, a corrupt file -
+ * returns the original file untouched: the server accepts it either way, this is
+ * only a saving.
+ *
+ * @param {File} file
+ * @returns {Promise<File>}
+ */
+export async function downscaleForUpload(file) {
+  if (!file || !file.type?.startsWith('image/') || typeof createImageBitmap !== 'function') {
+    return file
+  }
+  let bitmap
+  try {
+    // from-image: bake the EXIF rotation in, or a portrait phone photo arrives sideways.
+    bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' })
+  } catch {
+    return file
+  }
+  try {
+    const scale = UPLOAD_MAX_EDGE / Math.max(bitmap.width, bitmap.height)
+    if (!Number.isFinite(scale) || scale >= 1) return file
+
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.round(bitmap.width * scale)
+    canvas.height = Math.round(bitmap.height * scale)
+    const context = canvas.getContext('2d')
+    if (!context) return file
+    context.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.92))
+    if (!blob) return file
+    return new File([blob], file.name.replace(/\.\w+$/, '') + '.jpg', { type: 'image/jpeg' })
+  } catch {
+    return file
+  } finally {
+    bitmap.close()
+  }
 }
 
 /**
