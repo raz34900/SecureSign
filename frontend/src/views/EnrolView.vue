@@ -597,7 +597,7 @@ function ordinalClass(n) {
               How to photograph a signature
             </summary>
             <div class="pb-3">
-              <CaptureGuide />
+              <CaptureGuide mode="enrol" />
             </div>
           </details>
         </div>
