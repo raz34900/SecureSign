@@ -209,3 +209,20 @@ def test_staged_crops_are_bounded(client, seeded):
             assert response.json()["error"]["code"] == "TOO_MANY_SIGNATURES"
             break
         assert len(response.json()["crops"]) <= MAX_STAGED_CROPS
+
+
+def test_corrupt_customer_key_degrades_like_erasure(client, seeded, session_factory):
+    """A wrapped key that no longer unwraps is accidental erasure: the images are gone,
+    the pages that show them are not. A 500 here hid every verdict behind one bad row."""
+    from backend.app.models_db import CustomerKey
+
+    login(client, "BA11", "clerk1")
+    cust_id = do_full_enrolment(client, "123456780")
+    with session_factory() as db:
+        row = db.get(CustomerKey, cust_id)
+        row.wrapped_dek = bytes(len(row.wrapped_dek))
+        db.commit()
+
+    r = client.get(f"/customers/{cust_id}/references")
+    assert r.status_code == 200, r.text
+    assert r.json()["references"] == []
