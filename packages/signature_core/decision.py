@@ -19,7 +19,7 @@ def calculate_confidence(distance: float, threshold: float) -> float:
 
 
 def band(distance: float, threshold: float) -> str:
-    """valid | fraud | borderline - three outcomes, not two.
+    """valid | fraud | borderline - three outcomes
 
     A distance within BORDERLINE_MARGIN of the threshold is a coin flip from an
     84%-accurate model, and saying so is the point. Computed here and sent to the client,
