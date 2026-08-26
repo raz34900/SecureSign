@@ -93,7 +93,26 @@ Demo fixtures instead of manual setup, if wanted:
       -e SS_SEED_VERIFIER_PASSWORD=... -e SS_SEED_ORG_ADMIN_PASSWORD=... \
       api python scripts/seed_demo.py
 
-## 7. Prove the backups restore (optional, recommended)
+## 7. Public server: standard ports and your domain
+
+Development answers on 8443/8080 so nothing collides on a laptop. A public server wants
+443/80 and its real hostname - three lines in `.env`, nothing else:
+
+    PUBLIC_TLS_PORT=443
+    PUBLIC_HTTP_PORT=80
+    PUBLIC_SERVER_NAME=your.domain.example
+
+Then `docker compose up -d`. One variable feeds both the published port and the
+HTTP→HTTPS redirect inside nginx, so they cannot drift apart; `PUBLIC_SERVER_NAME` adds
+your domain to the redirect's allow-list - without it, requests carrying your domain in
+the Host header get the connection closed instead of redirected (any unknown Host still
+does, which is the open-redirect protection working). Unset, everything behaves exactly
+as in development.
+
+Put the real certificate pair in `deploy/tls/server.crt` + `server.key` before starting
+and the self-signed generator no-ops.
+
+## 8. Prove the backups restore (optional, recommended)
 
     export BACKUP_REPO_PASSPHRASE=<the value from .env>
     ./scripts/backup_drill.sh
