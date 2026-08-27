@@ -4,11 +4,21 @@
 # Production mounts a real certificate over these two paths and this becomes a no-op.
 set -eu
 DIR=/etc/nginx/tls
+mkdir -p "$DIR"
+
+# The default 443 server refuses unnamed requests, but the handshake that precedes the
+# refusal serves a certificate - and the real one names the domain, handing a scanner
+# the IP-to-domain link Cloudflare exists to hide. It gets this decoy instead.
+if [ ! -f "$DIR/decoy.crt" ] || [ ! -f "$DIR/decoy.key" ]; then
+  openssl req -x509 -newkey rsa:2048 -nodes -days 3650 \
+    -keyout "$DIR/decoy.key" -out "$DIR/decoy.crt" -subj "/CN=localhost"
+  chmod 600 "$DIR/decoy.key"
+fi
+
 if [ -f "$DIR/server.crt" ] && [ -f "$DIR/server.key" ]; then
   exit 0
 fi
 echo "no certificate at $DIR - generating a self-signed one for development"
-mkdir -p "$DIR"
 openssl req -x509 -newkey rsa:2048 -nodes -days 365 \
   -keyout "$DIR/server.key" -out "$DIR/server.crt" \
   -subj "/CN=localhost/O=SecureSign" \
