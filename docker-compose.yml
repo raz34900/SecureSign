@@ -22,6 +22,11 @@ services:
       # Writable: the container generates a self-signed certificate here on first start
       # if none exists. Production drops a real server.crt/server.key in and it no-ops.
       - ./deploy/tls:/etc/nginx/tls
+      # One access log file per day, written by nginx itself, surviving redeploys. The
+      # entrypoint prunes files older than 30 days each time the container starts.
+      - ./deploy/logs:/var/log/nginx
+    logging:
+      options: { max-size: "10m", max-file: "3" }
     depends_on:
       - api
 
@@ -44,6 +49,8 @@ services:
       - "8000"
     env_file:
       - .env
+    logging:
+      options: { max-size: "10m", max-file: "3" }
     volumes:
       # Only rows that predate the move into the database still read from here. A fresh
       # PostgreSQL deployment never touches it.
@@ -101,6 +108,8 @@ services:
     # in deny-all stands in front of it. Deployment removes the mapping.
     ports:
       - "5432:5432"
+    logging:
+      options: { max-size: "10m", max-file: "3" }
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U securesign -d securesign"]
       interval: 5s

@@ -16,5 +16,6 @@ COPY nginx-static.inc /etc/nginx/securesign-static.inc
 COPY nginx-tls.inc /etc/nginx/securesign-tls.inc
 COPY nginx-headers.inc /etc/nginx/securesign-headers.inc
 COPY tls-cert.sh /docker-entrypoint.d/10-securesign-tls-cert.sh
-RUN chmod +x /docker-entrypoint.d/10-securesign-tls-cert.sh
+COPY log-dir.sh /docker-entrypoint.d/11-securesign-log-dir.sh
+RUN chmod +x /docker-entrypoint.d/10-securesign-tls-cert.sh /docker-entrypoint.d/11-securesign-log-dir.sh
 COPY --from=build /app/dist /usr/share/nginx/html
