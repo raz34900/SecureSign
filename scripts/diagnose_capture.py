@@ -38,7 +38,8 @@ def main() -> None:
     parser.add_argument("--out", default=None, help="directory to write previews into")
     args = parser.parse_args()
 
-    raw = open(args.image, "rb").read()
+    with open(args.image, "rb") as f:
+        raw = f.read()
     gray = cv2.imdecode(np.frombuffer(raw, dtype=np.uint8), cv2.IMREAD_GRAYSCALE)
     if gray is None:
         raise SystemExit(f"{args.image}: not a readable image")

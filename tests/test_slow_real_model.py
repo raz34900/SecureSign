@@ -160,7 +160,8 @@ def test_real_cheque_signature_verifies_once_isolated(embedder):
         query = embedder.embed(image)
         return decide([float(np.linalg.norm(ref - query)) for ref in refs])
 
-    page = open(CHEQUE, "rb").read()
+    with open(CHEQUE, "rb") as f:
+        page = f.read()
     regions = extract_vertical_anchors(page)
     assert regions, "extractor found nothing on the cheque"
 
