@@ -395,7 +395,7 @@ onMounted(async () => {
       <section class="space-y-3 border-t border-border pt-5">
         <h2 class="text-sm font-semibold text-ink">Add someone</h2>
         <p class="max-w-prose text-xs text-ink-muted">
-          The password is generated here and shown once. Hand it over directly; they replace
+          The password is generated here and shown once. Hand it over directly. They replace
           it themselves before the account can do anything.
         </p>
 

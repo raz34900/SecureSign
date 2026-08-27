@@ -269,7 +269,7 @@ async function createOrganisation() {
       name: orgForm.value.name.trim(),
       type: orgForm.value.type,
     })
-    orgNotice.value = `${created.code} - ${created.name} created.`
+    orgNotice.value = `${created.code} · ${created.name} created.`
     orgForm.value = { code: '', name: '', type: 'financial' }
     await loadAll()
   } catch (err) {
@@ -652,7 +652,7 @@ onMounted(async () => {
               class="min-h-11 rounded-md border border-border-strong bg-surface px-3 text-sm text-ink"
             >
               <option v-for="type in ORG_TYPES" :key="type.value" :value="type.value">
-                {{ type.label }} - {{ type.hint }}
+                {{ type.label }} · {{ type.hint }}
               </option>
             </select>
           </label>
@@ -893,7 +893,7 @@ onMounted(async () => {
       <section class="space-y-3 border-t border-border pt-5">
         <h2 class="text-sm font-semibold text-ink">Add a user</h2>
         <p class="max-w-prose text-xs text-ink-muted">
-          Choose an organisation first - the roles offered are the ones that organisation
+          Choose an organisation first. The roles offered are the ones that organisation
           can hold. An engineer account exists only in the operator. The password is
           generated here and shown once.
         </p>
@@ -910,7 +910,7 @@ onMounted(async () => {
             >
               <option value="" disabled>Choose…</option>
               <option v-for="org in activeOrganisations" :key="org.code" :value="org.code">
-                {{ org.code }} - {{ org.name }}
+                {{ org.code }} · {{ org.name }}
               </option>
             </select>
           </label>

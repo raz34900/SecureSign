@@ -715,8 +715,8 @@ function ordinalClass(n) {
         :class="shortfall > 0 ? 'max-w-prose rounded-md border px-4 py-3 ' + noticeClass('warning') : ''"
       >
         <p v-if="shortfall > 0" class="text-ink">
-          Photograph the missing {{ shortfall === 1 ? 'one' : 'ones' }} - on the card or on
-          their own - and they will be added to these.
+          Photograph the missing {{ shortfall === 1 ? 'one' : 'ones' }}, on the card or on
+          their own, and they will be added to these.
         </p>
         <p v-else class="text-ink-muted">
           Missing or badly cut signatures? Add another photograph instead of starting over.

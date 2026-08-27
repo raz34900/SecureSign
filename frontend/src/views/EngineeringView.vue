@@ -411,7 +411,7 @@ onMounted(async () => {
             <p class="mt-1 max-w-prose text-xs text-ink-muted">
               You cannot see the signature, and you are not being asked to re-judge it. Decide
               whether the report is a usable training signal: a near-threshold score from an
-              institution with a good record usually is; a confident score disputed by an
+              institution with a good record usually is. A confident score disputed by an
               institution whose reports keep getting rejected usually is not.
             </p>
           </div>

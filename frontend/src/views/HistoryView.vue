@@ -196,7 +196,7 @@ onMounted(loadHistory)
       <h1 class="text-xl font-semibold text-navy">Verification history</h1>
       <p class="mt-1 max-w-prose text-sm text-ink-muted">
         Every check your organisation has run. Flag a result you believe was wrong and it
-        goes to the engineering team; the recorded verdict never changes.
+        goes to the engineering team. The recorded verdict never changes.
       </p>
     </div>
 
@@ -461,7 +461,7 @@ onMounted(loadHistory)
                                 class="tabular flex h-40 items-center justify-center rounded-md border border-dashed border-border bg-sunken px-4 text-center text-xs text-ink-muted lg:h-48"
                               >
                                 The checked image is no longer kept. Images are held for
-                                {{ detail.retention_days }} days; the result itself is permanent.
+                                {{ detail.retention_days }} days. The result itself is permanent.
                               </p>
                             </figure>
 
@@ -568,7 +568,7 @@ onMounted(loadHistory)
                         v-if="isClerk && v.feedback"
                         class="border-t border-border pt-3 text-sm text-ink-muted"
                       >
-                        Reported as {{ v.feedback.claimed_label }} - {{ v.feedback.status }}.
+                        Reported as {{ v.feedback.claimed_label }}, currently {{ v.feedback.status }}.
                         A result cannot be reported twice.
                       </div>
                       <div v-else-if="isClerk" class="max-w-xl space-y-3 border-t border-border pt-3">

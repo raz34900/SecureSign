@@ -70,7 +70,7 @@ async function handleSubmit() {
       </h1>
       <p v-if="mustChangePassword" class="mt-1 max-w-prose text-sm text-ink-muted">
         Your account was created with a password someone else chose, so it is not private
-        yet. Pick your own before continuing - nothing else will open until you do.
+        yet. Pick your own before continuing. Nothing else will open until you do.
       </p>
       <p v-else class="mt-1 max-w-prose text-sm text-ink-muted">
         Signed in as {{ state.user?.username }} at {{ state.user?.org_name }}.
