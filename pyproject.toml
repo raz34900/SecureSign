@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "securesign"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111",
+    "uvicorn[standard]>=0.30",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.2",
+    "argon2-cffi>=23.1",
+    "cryptography>=42",
+    "python-multipart>=0.0.9",
+    "numpy>=1.26",
+    "opencv-python-headless>=4.9",
+    "pillow>=10",
+    "torch>=2.2",
+    "torchvision>=0.17",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[tool.setuptools]
+package-dir = { "signature_core" = "packages/signature_core", "backend" = "backend" }
+packages = [
+    "signature_core",
+    "backend",
+    "backend.app",
+    "backend.app.security",
+    "backend.app.auth",
+    "backend.app.routers",
+    "backend.app.services",
+    "backend.app.repositories",
+]
+
+[tool.pytest.ini_options]
+addopts = "-m 'not slow'"
+markers = ["slow: needs real model weights / real latency"]
+testpaths = ["tests"]

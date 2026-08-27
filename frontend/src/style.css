@@ -1,0 +1,183 @@
+@import "tailwindcss";
+
+/* SecureSign design tokens.
+   Navy, green and the deep point are sampled from the shield mark. Everything else is
+   derived: neutrals are tinted toward the navy hue rather than pure grey, and no surface
+   is pure #fff or #000. */
+@theme {
+  /* Brand, sampled from the mark */
+  --color-navy: oklch(0.349 0.117 262);
+  --color-navy-deep: oklch(0.296 0.104 262);
+  --color-navy-soft: oklch(0.45 0.095 262);
+  /* The ground the shield mark sits on. Darker than both of the mark's own navies, so
+     the mark keeps its exact brand colours and still reads against it. */
+  --color-navy-ground: oklch(0.23 0.07 262);
+  --color-brand-green: oklch(0.678 0.196 140);
+  --color-brand-green-deep: oklch(0.58 0.17 141);
+
+  /* Surfaces */
+  --color-canvas: oklch(0.968 0.006 262);
+  --color-surface: oklch(0.995 0.002 262);
+  --color-sunken: oklch(0.942 0.008 262);
+  --color-border: oklch(0.895 0.009 262);
+  --color-border-strong: oklch(0.79 0.016 262);
+
+  /* Text */
+  --color-ink: oklch(0.28 0.038 262);
+  --color-ink-muted: oklch(0.47 0.028 262);
+  --color-ink-subtle: oklch(0.58 0.022 262);
+  --color-ink-inverse: oklch(0.98 0.004 262);
+
+  /* Decision states. Three, not two: a model that is 84% accurate at a 0.3999
+     threshold produces genuinely borderline results, and they must be able to
+     look borderline. */
+  --color-valid: oklch(0.52 0.13 149);
+  --color-valid-surface: oklch(0.965 0.032 149);
+  --color-valid-border: oklch(0.82 0.09 149);
+
+  --color-fraud: oklch(0.53 0.2 27);
+  --color-fraud-surface: oklch(0.965 0.03 27);
+  --color-fraud-border: oklch(0.82 0.11 27);
+
+  --color-borderline: oklch(0.56 0.13 72);
+  --color-borderline-surface: oklch(0.965 0.045 82);
+  --color-borderline-border: oklch(0.82 0.12 82);
+
+  /* Feedback */
+  --color-warning: oklch(0.56 0.13 72);
+  --color-warning-surface: oklch(0.965 0.045 82);
+  --color-warning-border: oklch(0.82 0.12 82);
+  --color-danger: oklch(0.53 0.2 27);
+  --color-danger-surface: oklch(0.965 0.03 27);
+  --color-danger-border: oklch(0.82 0.11 27);
+
+  /* One focus colour for the whole product. Meets 3:1 against both canvas and
+     surface, which the previous brand-green ring did not. */
+  --color-focus: oklch(0.52 0.18 258);
+
+  /* Motion. The built-in CSS easings are too weak to read as intentional, and ease-in
+     delays the first movement, which is the moment being watched. Nothing here runs long:
+     a clerk repeats this flow dozens of times a day and animation they wait on is a cost. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --dur-press: 120ms;
+  --dur-enter: 200ms;
+  --dur-panel: 260ms;
+
+  /* Type scale, fixed rem. Flat below the body size where density matters, then a
+     1.25 step and above so a heading reads as a heading without needing weight alone. */
+  --text-2xs: 0.6875rem;
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.1875rem;
+  --text-xl: 1.5rem;
+  --text-2xl: 1.875rem;
+  --text-3xl: 2.375rem;
+  --text-4xl: 3rem;
+}
+
+:root {
+  /* Stop the browser substituting a dark canvas behind light-mode content. */
+  color-scheme: light;
+}
+
+html {
+  /* No child may extend the document sideways. A table that overflows its own scroller
+     used to widen the page instead, and every full-width surface then stopped at the
+     viewport edge while the page scrolled past it - which reads as the whole interface
+     being pinned to the left of the screen. `clip` rather than `hidden`, because `hidden`
+     would make this a scroll container and break every `position: sticky` inside it. */
+  overflow-x: clip;
+  background-color: var(--color-canvas);
+  color: var(--color-ink);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  -webkit-text-size-adjust: 100%;
+}
+
+/* The surfaces nobody draws still carry the design: left at browser defaults they
+   belong to no design system at all. */
+::selection {
+  background-color: oklch(0.86 0.06 262);
+  color: var(--color-navy-deep);
+}
+
+html {
+  scrollbar-color: var(--color-border-strong) var(--color-canvas);
+  caret-color: var(--color-navy);
+}
+/* iOS zooms the page in when a field with text under 16px takes focus, and does not zoom
+   back out afterwards. Hold fields at 16px wherever a touch keyboard is likely; the
+   alternative, a maximum-scale on the viewport, stops the zoom by taking pinch-zoom away
+   from everyone, which fails WCAG 1.4.4. Desktop keeps the denser 14px. */
+@media (max-width: 63.99rem) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 1rem;
+  }
+}
+
+/* Distances, confidences and counts sit in columns and must not jitter between rows. */
+code,
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+body {
+  min-height: 100vh;
+}
+
+/* Every button confirms it was heard. 120ms is under the threshold where a press reads
+   as lag, and the scale is small enough to feel like travel rather than a bounce. */
+button:not(:disabled),
+[role="button"]:not([aria-disabled="true"]) {
+  transition: transform var(--dur-press) var(--ease-out);
+}
+
+button:not(:disabled):active,
+[role="button"]:not([aria-disabled="true"]):active {
+  transform: scale(0.985);
+}
+
+/* Nothing in the world appears from nothing: entrances start near their resting state. */
+@keyframes ss-rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes ss-settle {
+  from {
+    opacity: 0;
+    transform: scale(0.98);
+  }
+}
+
+.ss-rise {
+  animation: ss-rise var(--dur-enter) var(--ease-out) both;
+}
+
+.ss-settle {
+  animation: ss-settle var(--dur-panel) var(--ease-out) both;
+}
+
+/* One focus treatment everywhere. Keyboard users get a visible ring; pointer
+   users do not get a stray outline on click. */
+:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

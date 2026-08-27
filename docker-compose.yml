@@ -1,0 +1,116 @@
+name: securesign
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+    restart: unless-stopped
+    # Development answers on 8443/8080. Deployment sets PUBLIC_TLS_PORT=443,
+    # PUBLIC_HTTP_PORT=80 and PUBLIC_SERVER_NAME=<domain> in .env and touches nothing
+    # else: the same variable feeds the port mapping here and the redirect target
+    # inside nginx, so the two cannot drift apart.
+    ports:
+      - "${PUBLIC_TLS_PORT:-8443}:443"
+      - "${PUBLIC_HTTP_PORT:-8080}:80"    # redirects to the TLS port; nothing is served in the clear
+      # Engineering panel and account provisioning. Bound to the host loopback, so it is
+      # unreachable from the network no matter what the firewall says.
+      - "127.0.0.1:8081:8081"
+    environment:
+      PUBLIC_TLS_PORT: ${PUBLIC_TLS_PORT:-8443}
+      PUBLIC_SERVER_NAME: ${PUBLIC_SERVER_NAME:-}
+    volumes:
+      # Writable: the container generates a self-signed certificate here on first start
+      # if none exists. Production drops a real server.crt/server.key in and it no-ops.
+      - ./deploy/tls:/etc/nginx/tls
+    depends_on:
+      - api
+
+  api:
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile
+    # Above uvicorn's 30s drain, or compose SIGKILLs a verification it was finishing.
+    # The compose default is 10s, and a CPU inference can outlive that.
+    stop_grace_period: 40s
+    # If the database is not there yet the app fails loudly and exits, on purpose - and
+    # this brings it back to try again. depends_on below orders startup on one host, but
+    # it does not exist across machines; the restart policy is what holds there.
+    restart: unless-stopped
+    # Deliberately not published. nginx reaches it over the compose network, and the
+    # engineering and account endpoints are hidden by an nginx rule - so a published
+    # port is a second door into the API with nothing in front of it. Publish it
+    # temporarily if you need to talk to the API directly, and remember what it opens.
+    expose:
+      - "8000"
+    env_file:
+      - .env
+    volumes:
+      # Only rows that predate the move into the database still read from here. A fresh
+      # PostgreSQL deployment never touches it.
+      - ./data:/srv/securesign/data
+    # Waits for the database to answer, not merely to start. Without the condition the
+    # API boots first, create_all fails against a socket nobody is listening on, and the
+    # container restarts until it happens to win the race.
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    build:
+      context: ./deploy
+      dockerfile: db.Dockerfile
+    restart: unless-stopped
+    # Every finished WAL segment is pushed to the repository at once, and a segment is
+    # forced closed every 60s even when idle - so the most that can ever be lost is about
+    # a minute, not a day. The verdict rows and the audit log are the unacceptable loss;
+    # an hour of downtime restoring is not.
+    command: >
+      postgres
+      -c archive_mode=on
+      -c archive_command='pgbackrest --stanza=main archive-push %p'
+      -c archive_timeout=60
+    environment:
+      POSTGRES_DB: securesign
+      POSTGRES_USER: securesign
+      # The repository is encrypted by pgBackRest itself, so wherever it is copied -
+      # local volume today, Backblaze at deployment - it is ciphertext. This passphrase
+      # is a THIRD key, deliberately separate from SS_PII_*: it must never live in the
+      # same place as the backups it protects, and losing it loses every backup.
+      PGBACKREST_REPO1_CIPHER_TYPE: aes-256-cbc
+      PGBACKREST_REPO1_CIPHER_PASS: "${BACKUP_REPO_PASSPHRASE:?add BACKUP_REPO_PASSPHRASE to .env - generate one with openssl rand -hex 32}"
+      # At deployment, uncomment this block and put the values in .env to move the
+      # repository to S3; nothing else changes. It cannot stay uncommented with empty
+      # values - pgbackrest refuses an environment option without one - and this service
+      # never gets env_file, which would put SS_PII_ENC_KEY beside the ciphertext it
+      # protects. Passed one by one, on purpose.
+      # PGBACKREST_REPO1_TYPE: s3
+      # PGBACKREST_REPO1_S3_ENDPOINT: "${PGBACKREST_REPO1_S3_ENDPOINT}"
+      # PGBACKREST_REPO1_S3_BUCKET: "${PGBACKREST_REPO1_S3_BUCKET}"
+      # PGBACKREST_REPO1_S3_REGION: "${PGBACKREST_REPO1_S3_REGION}"
+      # PGBACKREST_REPO1_S3_KEY: "${PGBACKREST_REPO1_S3_KEY}"
+      # PGBACKREST_REPO1_S3_KEY_SECRET: "${PGBACKREST_REPO1_S3_KEY_SECRET}"
+      # Interpolation reads the shell, or the .env beside THIS file - not ../.env, which
+      # is only handed to the api container. Run compose with --env-file ../.env (or from
+      # the repository root, --env-file .env) to use the one that already holds it.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?not set for interpolation - re-run with --env-file .env from the repo root, or export it}
+    expose:
+      - "5432"
+    # Published on purpose, for local development: database clients on this machine
+    # connect to localhost:5432. On any machine with a public address this line is the
+    # open internet reading the registry - Docker bypasses ufw, so only a cloud firewall
+    # in deny-all stands in front of it. Deployment removes the mapping.
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U securesign -d securesign"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - pgbackrest:/var/lib/pgbackrest
+
+volumes:
+  pgdata:
+  pgbackrest:
