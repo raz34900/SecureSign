@@ -202,7 +202,7 @@ const scaleSummary = computed(() => {
   const gap = formatDistance(gapFromLine.value)
   const line = formatDistance(result.value.threshold)
   if (decision.value === 'borderline') {
-    return `It scored ${score}, only ${gap} from the decision line at ${line} - too close for the model to tell a genuine signature from a forged one.`
+    return `It scored ${score}, only ${gap} from the decision line at ${line}. That is too close for the model to tell a genuine signature from a forged one.`
   }
   if (onMatchSide.value) {
     return `It scored ${score}, which is ${gap} inside the decision line at ${line}. Closer to the left is more alike.`
@@ -277,13 +277,24 @@ function anchorAlt(anchor) {
 
 const captureTheme = computed(() => noticeClass(captureNotice.value?.level ?? 'warning'))
 
-async function handleFileChange(event) {
-  const picked = event.target.files && event.target.files[0]
-  if (!picked) return
+async function acceptFile(picked) {
   const chosen = await downscaleForUpload(picked)
   setFile(chosen)
   findRegions(chosen)
   assessFile(chosen)
+}
+
+function handleFileChange(event) {
+  const picked = event.target.files && event.target.files[0]
+  if (picked) acceptFile(picked)
+}
+
+const dragging = ref(false)
+
+function onDrop(event) {
+  dragging.value = false
+  const picked = event.dataTransfer?.files?.[0]
+  if (picked) acceptFile(picked)
 }
 
 async function assessFile(chosen) {
@@ -593,14 +604,22 @@ async function reset() {
             @change="handleFileChange"
           />
 
-          <div class="mt-1.5 flex flex-col gap-2 sm:flex-row">
+          <div
+            class="mt-1.5 flex flex-col gap-2 sm:flex-row"
+            @dragover.prevent="dragging = true"
+            @dragleave.prevent="dragging = false"
+            @drop.prevent="onDrop"
+          >
             <button
               ref="chooseFileButton"
               type="button"
-              class="min-h-11 flex-1 rounded-md border border-dashed border-border-strong px-4 py-3 text-sm font-medium text-ink-muted transition-colors hover:border-navy hover:text-navy"
+              class="min-h-11 flex-1 rounded-md border border-dashed px-4 py-3 text-sm font-medium transition-colors"
+              :class="dragging
+                ? 'border-navy bg-sunken text-navy'
+                : 'border-border-strong text-ink-muted hover:border-navy hover:text-navy'"
               @click="openFilePicker"
             >
-              Choose a file
+              {{ dragging ? 'Drop the photograph' : 'Choose a file' }}
             </button>
             <button
               type="button"
@@ -948,7 +967,7 @@ async function reset() {
 
         <p class="border-t border-border px-5 py-3 text-xs text-ink-muted">
           This model reads about eight signatures in ten correctly, and it cannot see
-          anything the photograph did not capture. It supports your judgement; it does not
+          anything the photograph did not capture. It supports your judgement, not
           replace it.
         </p>
       </div>
