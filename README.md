@@ -209,8 +209,8 @@ The project combines three different signature datasets to create a unified, ric
 | :--- | :---: | :---: |
 | **English (Original)** | 109 | 3,356 |
 | **BHSig260 (Hindi/Bengali)** | 260 | 14,016 |
-| **ChiSig (Chinese)** | 500 | 3,989 |
-| **Total** | **869** | **21,361** |
+| **ChiSig (Chinese)** | 500 | 10,242 |
+| **Total** | **869** | **27,614** |
 
 ### Siamese Pairs (Train / Val / Test)
 To train the Siamese Network, the data was strictly isolated (to prevent data leakage) and paired:
