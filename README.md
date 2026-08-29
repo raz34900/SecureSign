@@ -48,7 +48,7 @@ This system was developed as a comprehensive academic capstone project by **Raz 
 
 ## Key Features
 
-- **Enrolment from a specimen card** - a clerk photographs a card of 8–10 signatures;
+- **Enrolment from a specimen card** - a clerk photographs a card of 8-10 signatures;
   the system finds, crops and previews each one, and the clerk approves what is stored.
 - **One-second verification** - a signature is isolated out of the photograph, compared
   against every reference on file, and explained: per-reference distances, closest-first,
