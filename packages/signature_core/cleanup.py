@@ -41,22 +41,41 @@ def flatten_illumination(gray: np.ndarray) -> np.ndarray:
     return cv2.divide(gray, background, scale=PAPER)
 
 
+# The working size embeds are prepared at, and how far beyond it the canvas extends.
+# The transform opens with a kernel a fifth of the canvas, twice - at three times the
+# writing, the kernel (0.6x) eroded twice outreaches any stroke, so a signature's own
+# line-through survives. The removal exists for cheque ruled lines, which cleanup has
+# already dealt with by then. Measured at 512/3: the line intact, ~100ms an embed.
+PAD_WORKING_EDGE = 512
+PAD_FACTOR = 3
+
+
 def pad_for_rotation(img: Image.Image) -> Image.Image:
-    """Give the deskew room to turn in, so it stops cutting the ends off the writing.
+    """Give the deskew room to turn in, and the line remover nothing it can reach.
 
     The transform rotates about the centre into a same-sized canvas, so whatever swings
     outside is discarded - and a signature is wide, short and slanted, which puts its
     first and last strokes where the arc is widest. Four photographs, deskew of -12° to
-    -13.5°, destroying 2.6% to 4.4% of the ink each time.
+    -13.5°, destroying 2.6% to 4.4% of the ink each time. Padding square means no centre
+    rotation can push ink off canvas; the tight crop afterwards keeps the padding away
+    from the model.
 
-    Padding to a square of the diagonal means no centre rotation can push ink off canvas;
-    the tight crop afterwards keeps the padding away from the model. Over the same four
-    photographs mean distance fell 0.2835 to 0.1828 and the worst pair 0.4862 to 0.2711,
-    from one pair reading FRAUD to all six agreeing. Both sides must be padded or neither.
+    The canvas is oversized on purpose. The transform strips horizontal runs longer than
+    a fifth of its input to remove cheque ruled lines, and a signature's flat line-through
+    is indistinguishable from one - measured on a real card, three of eight specimens
+    lost the stroke joining the letters. On a canvas three times the writing, no stroke
+    survives the kernel's double erosion. Measured across three writers this also moved
+    one genuine writer from 0.438 (rejected) to 0.332 (accepted) and tightened another
+    from 0.311 to 0.200. Both sides must be prepared this way or neither - reembed
+    after changing it.
     """
-    side = math.ceil(math.hypot(*img.size))
+    small = img.convert("L")
+    if max(small.size) > PAD_WORKING_EDGE:
+        small = small.copy()
+        small.thumbnail((PAD_WORKING_EDGE, PAD_WORKING_EDGE), Image.LANCZOS)
+    side = max(math.ceil(math.hypot(*small.size)), PAD_FACTOR * max(small.size))
     padded = Image.new("L", (side, side), PAPER)
-    padded.paste(img.convert("L"), ((side - img.width) // 2, (side - img.height) // 2))
+    padded.paste(small, ((side - small.width) // 2, (side - small.height) // 2))
     return padded
 
 
