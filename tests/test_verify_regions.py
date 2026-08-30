@@ -47,14 +47,13 @@ def make_phone_photograph() -> bytes:
     return buffer.getvalue()
 
 
-def test_the_browser_is_shown_a_thumbnail_and_submits_the_full_region(client, seeded):
+def test_the_browser_is_shown_a_preview_and_submits_the_full_region(client, seeded):
     """Two images per region, and the difference is not cosmetic.
 
-    A decoded bitmap costs four bytes a pixel in the tab regardless of what the PNG
-    weighs, so displaying full-resolution regions from a phone photograph cost ~23 MB
-    each. A phone reclaims memory by discarding the page, which reloads it and empties
-    the form mid-verification. The submitted image stays full resolution because
-    preparing a downscaled region moves the embedding distance by up to 0.47.
+    The preview is the model's own 224px rendition - what the compare screen will show,
+    and small enough that a phone tab survives a page of them. The submitted image stays
+    full resolution because preparing a downscaled region moves the embedding distance
+    by up to 0.47.
     """
     from backend.app.routers.verify import PREVIEW_EDGE
 

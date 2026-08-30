@@ -35,21 +35,10 @@ def _ink_fraction(image: Image.Image) -> float:
 
 # Longest edge the browser is asked to display. A decoded bitmap costs four bytes a pixel
 # whatever the PNG weighs - about 23 MB per full-size region on a phone photograph, which
-# is enough for the phone to discard the page and empty the form.
+# is enough for the phone to discard the page and empty the form. The normalised preview
+# is 224px, comfortably under it; the submitted image stays full resolution because
+# preparing a downscaled region moves the embedding distance by up to 0.47.
 PREVIEW_EDGE = 900
-
-
-def _thumbnail(img: Image.Image) -> Image.Image:
-    """A copy small enough to display. Never submitted - resolution is not cosmetic here.
-
-    Preparing a downscaled region and embedding it moved the distance by 0.05 to 0.24 at
-    1024px and as much as 0.47 at 480px, because the transform binarises before it
-    resizes and interpolation changes stroke weight. The full-resolution region is what
-    goes to /verify; this is only what the clerk looks at.
-    """
-    small = img.copy()
-    small.thumbnail((PREVIEW_EDGE, PREVIEW_EDGE), Image.LANCZOS)
-    return small
 
 
 def _png_base64(img: Image.Image) -> str:
@@ -86,7 +75,9 @@ def _extract_regions(image_bytes: bytes) -> list[dict]:
     for index, (_, cleaned) in enumerate(candidates[:MAX_REGIONS]):
         regions.append({
             "index": index,
-            "preview_png_base64": _png_base64(_thumbnail(cleaned)),
+            # The model's rendition, the same one the compare screen shows - the clerk
+            # picks what will actually be compared, not the grainy photograph stage.
+            "preview_png_base64": query_preview(cleaned),
             "image_png_base64": _png_base64(cleaned),
             "clipped": region_is_clipped(np.asarray(cleaned.convert("L"))),
         })
