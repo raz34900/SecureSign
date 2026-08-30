@@ -19,7 +19,7 @@ from backend.app.repositories import (audit, customer_keys, customers as custome
 from backend.app.repositories import verifications as verifications_repo
 from backend.app.security import envelope
 from backend.app.security.crypto import blind_index
-from signature_core.cleanup import pad_for_rotation
+from signature_core.cleanup import isolate_signature_ink, pad_for_rotation
 from signature_core.decision import BORDERLINE_MARGIN, band, calculate_confidence, decide
 from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.quality import validate_image_quality
@@ -230,7 +230,11 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
     if not ok:
         raise AppError("INVALID_IMAGE", quality_msg, 422)
 
-    query_img = Image.open(io.BytesIO(image_bytes)).convert("L")
+    # Every query is cleaned here, whatever path it arrived by. The region picker sends
+    # images that are already prepared - cleanup is a no-op on those - but the whole-image
+    # path and any direct API caller used to reach the model unprepared, against
+    # references that were all flattened and isolated. Same preparation or no comparison.
+    query_img = isolate_signature_ink(Image.open(io.BytesIO(image_bytes)).convert("L"))
     query_vec = embedder.embed(pad_for_rotation(query_img))
     refs, distances = [], []
     skipped = 0

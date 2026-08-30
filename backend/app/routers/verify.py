@@ -50,12 +50,11 @@ def _png_base64(img: Image.Image) -> str:
 def _whole_image_preview(image_bytes: bytes) -> str:
     """What "use the whole image instead" actually submits, as the model will see it.
 
-    Deliberately built from the raw upload rather than the flattened copy, because that
-    is the truth: choosing the whole image sends the original photograph to /verify,
-    which neither extracts nor cleans it - it only applies the shared transform. The
-    clerk should be able to see that before committing to it.
+    /verify cleans every query it receives, so the honest preview is the cleaned frame -
+    the same preparation every reference went through.
     """
-    return query_preview(Image.open(io.BytesIO(image_bytes)).convert("L"))
+    return query_preview(isolate_signature_ink(
+        Image.open(io.BytesIO(image_bytes)).convert("L")))
 
 
 def _extract_regions(image_bytes: bytes) -> list[dict]:

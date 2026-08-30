@@ -359,3 +359,26 @@ def test_a_split_close_up_also_offers_the_whole_frame():
     assert len(crops) >= 2
     widths = [crop.size[0] for crop in crops]
     assert max(widths) == 1600, "the whole frame was not offered alongside the pieces"
+
+
+def test_verify_cleans_the_query_whatever_path_it_arrived_by(client, seeded):
+    """The region picker sends prepared images, but the whole-image path and any direct
+    API caller used to reach the model raw - against references that were all cleaned.
+    A reference and a query prepared differently are not comparable, so /verify now
+    cleans every query itself, and the preview it returns proves it."""
+    from test_enrolment import do_full_enrolment
+    from backend.app.services.verification import normalised_png
+
+    login(client, "BA11", "clerk1")
+    do_full_enrolment(client, "445566780")
+
+    region = make_region_with_furniture()
+    buffer = io.BytesIO()
+    region.convert("RGB").save(buffer, format="PNG")
+
+    response = client.post("/verify", data={"national_id": "445566780"},
+                           files={"file": ("q.png", buffer.getvalue(), "image/png")})
+    assert response.status_code == 200, response.text
+
+    prepared = normalised_png(isolate_signature_ink(region.convert("L")))
+    assert response.json()["query_preview_png_base64"] == base64.b64encode(prepared).decode()
