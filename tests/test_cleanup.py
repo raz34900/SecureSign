@@ -101,7 +101,11 @@ def test_cleanup_stays_out_of_the_model_pipeline(module):
 
 def test_enrolment_crops_are_extraction_then_cleanup(client, seeded):
     """A reference must be prepared exactly the way a query is, or the two are not
-    comparable. Extract, then strip non-signature ink; nothing else."""
+    comparable. Extract, then strip non-signature ink; nothing else - and the preview
+    is the same normalised rendition the verify screen shows, so what the clerk
+    approves is what a verification will later display."""
+    from backend.app.services.verification import normalised_png
+
     login(client, "BA11", "clerk1")
     card = make_specimen_card(9)
 
@@ -122,8 +126,9 @@ def test_enrolment_crops_are_extraction_then_cleanup(client, seeded):
 
     for crop, reference in zip(returned, expected):
         decoded = Image.open(io.BytesIO(base64.b64decode(crop["preview_png_base64"])))
+        rendered = Image.open(io.BytesIO(normalised_png(reference)))
         assert np.array_equal(np.asarray(decoded.convert("L")),
-                              np.asarray(reference.convert("L")))
+                              np.asarray(rendered.convert("L")))
 
 
 def test_a_clean_specimen_card_is_unchanged_by_enrolment_cleanup():

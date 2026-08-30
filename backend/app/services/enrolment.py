@@ -24,6 +24,7 @@ from backend.app.repositories import (audit, customer_keys, customers as custome
                                       references as references_repo)
 from backend.app.security import envelope
 from backend.app.security.crypto import blind_index, encrypt_pii
+from backend.app.services.verification import normalised_png
 from signature_core.cleanup import candidate_crops, pad_for_rotation
 from signature_core.decision import decide
 
@@ -68,8 +69,16 @@ def _digest(crop: Image.Image) -> str:
 
 
 def _crop_views(staged: _Staged) -> list[dict]:
+    """Previews are the model's rendition, not the photograph's.
+
+    The stored crop keeps the paper's grain, and whether cleanup painted the background
+    white depends on whether it stripped anything - so raw previews looked grainy or
+    clean at random, and none resembled what the verify screen later shows. Rendering
+    the same normalised image the compare screen renders makes the wizard show exactly
+    what a verification will display, and the clerk selects what the model will see.
+    """
     return [{"crop_id": crop_id,
-             "preview_png_base64": base64.b64encode(_png_bytes(crop)).decode()}
+             "preview_png_base64": base64.b64encode(normalised_png(crop)).decode()}
             for crop_id, crop in staged.crops.items()]
 
 
