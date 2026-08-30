@@ -299,3 +299,58 @@ def test_the_shared_pipeline_finds_every_signature_on_a_card():
 
     for count in (8, 9, 10):
         assert len(candidate_crops(make_specimen_card(count))) == count
+
+
+def test_cleanup_keeps_a_detached_letter_beside_the_stroke():
+    """A רז written with daylight between the letters is one signature in two blobs.
+
+    The second letter sits just beside the main stroke's run, under a quarter of its
+    area, which is exactly what the furniture rule deletes - measured on a real card,
+    eight of ten references lost their first letter this way. Distance from the main
+    stroke is what separates a letter from a cheque's corner square: letter spacing is
+    under a letter-height, furniture sits whole signature-widths away.
+    """
+    region = Image.new("L", (700, 240), 255)
+    draw = ImageDraw.Draw(region)
+    draw.line([(30, 180), (420, 170), (450, 60)], fill=0, width=10)  # tail + hook
+    draw.arc([(480, 60), (560, 150)], start=280, end=180, fill=0, width=9)  # the ר beside it
+    cleaned = np.asarray(isolate_signature_ink(region))
+    assert (cleaned[:, 480:565] < 128).sum() > 0, "the detached letter was deleted"
+
+
+def test_a_nearly_square_signature_is_still_plausible():
+    """Two real writers measured 0.94 and 0.95 wide-to-tall; the old floor of 1.0
+    silently dropped two of their eight card specimens and the card missed the floor."""
+    from signature_core.quality import looks_like_signature
+
+    tallish = np.full((356, 334), 255, dtype=np.uint8)
+    img = Image.fromarray(tallish)
+    ImageDraw.Draw(img).line([(30, 300), (160, 40), (300, 310), (60, 120)], fill=0, width=12)
+    assert looks_like_signature(np.asarray(img))
+
+
+def test_a_blank_or_near_blank_crop_is_not_plausible():
+    """Background specks extract as tiny regions and come out of cleanup blank; a blank
+    crop still embeds, to a garbage vector that poisons every later verification."""
+    from signature_core.quality import looks_like_signature
+
+    blank = np.full((51, 72), 255, dtype=np.uint8)
+    assert not looks_like_signature(blank)
+
+
+def test_a_split_close_up_also_offers_the_whole_frame():
+    """A close-up whose letters extract as separate pieces must offer the reunited frame,
+    because no piece on its own is the signature."""
+    from signature_core.cleanup import candidate_crops
+
+    page = Image.new("L", (1600, 900), 255)
+    draw = ImageDraw.Draw(page)
+    draw.line([(150, 500), (600, 480), (640, 300)], fill=0, width=14)
+    draw.line([(900, 300), (940, 470), (1300, 500), (1350, 320)], fill=0, width=14)
+    buffer = io.BytesIO()
+    page.convert("RGB").save(buffer, format="JPEG", quality=95)
+
+    crops = candidate_crops(buffer.getvalue())
+    assert len(crops) >= 2
+    widths = [crop.size[0] for crop in crops]
+    assert max(widths) == 1600, "the whole frame was not offered alongside the pieces"

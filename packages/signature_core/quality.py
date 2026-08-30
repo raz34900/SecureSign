@@ -8,14 +8,20 @@ import numpy as np
 CLIPPED_STROKE_PIXELS = 8
 
 
-# A band of writing is always wider than it is tall; the narrowest genuine signature
-# measured on this project's own samples is 1.79. Under 1.0 is a page edge, a shadow or a
-# registration mark - 0.50 and 0.68 on a real cheque.
-MIN_ASPECT = 1.0
+# Writing is wider than it is tall, but not by as much as this project first measured:
+# a looping two-letter signature photographed close up came out at 0.94. Page edges,
+# registration marks and background clutter measure 0.26 to 0.80, so 0.85 separates them.
+MIN_ASPECT = 0.85
 
 # Handwriting is sparse. Genuine crops measure 0.05 to 0.17 ink; a solid block is a
 # blown-out shadow or a filled rectangle, not a signature.
 MAX_INK_FRACTION = 0.6
+
+# Below this there is not enough left to compare. Background specks come out of cleanup
+# blank and a torn scrap of a stroke carries ~1300 pixels; the smallest genuine cleaned
+# crop measured across three writers carries ~6000. A blank or near-blank crop still
+# embeds - to a garbage vector that poisons every verification against that customer.
+MIN_INK_PIXELS = 1500
 
 
 def looks_like_signature(region: np.ndarray) -> bool:
@@ -30,7 +36,10 @@ def looks_like_signature(region: np.ndarray) -> bool:
         return False
     if width / height < MIN_ASPECT:
         return False
-    return float((region < 128).mean()) <= MAX_INK_FRACTION
+    ink = region < 128
+    if int(ink.sum()) < MIN_INK_PIXELS:
+        return False
+    return float(ink.mean()) <= MAX_INK_FRACTION
 
 
 def region_is_clipped(region: np.ndarray) -> bool:

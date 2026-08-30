@@ -9,6 +9,7 @@ inflate the bounding box the transform crops to, leaving the signature a fractio
 224x224 input. Measured on a real cheque: 0.4696 raw (rejected), 0.2350 cleaned
 (accepted).
 """
+import io
 import math
 
 import cv2
@@ -16,7 +17,7 @@ import numpy as np
 from PIL import Image
 
 from signature_core.anchors import extract_vertical_anchors
-from signature_core.quality import looks_like_signature
+from signature_core.quality import MAX_INK_FRACTION, MIN_INK_PIXELS, looks_like_signature
 
 DEFAULT_MIN_AREA_RATIO = 0.25
 
@@ -79,23 +80,30 @@ def flatten_image_bytes(image_bytes: bytes) -> bytes:
 # the signature, as a fraction of the main stroke's own height.
 ACCENT_REACH = 0.25
 
+# How far to the side of the main stroke a detached letter may sit, as a fraction of the
+# main stroke's own height. Letter spacing within one signature is under a letter-height;
+# a cheque's corner squares and reference number sit whole signature-widths away.
+NEIGHBOUR_REACH = 1.0
+
 
 def _belongs_to(blob, main) -> bool:
     """Is this detached mark part of the signature rather than document furniture?
 
-    A dot over an i, a diacritic, a crossed t: these are separate ink blobs far smaller
-    than a quarter of the signature, and the size rule alone deletes them. What tells
-    them apart from a cheque's reference number or its corner squares is position - an
-    accent sits within the horizontal run of the writing and hugs it vertically, while
-    furniture sits off to the side or out at the margins.
+    Two ways in. An accent - a dot over an i, a diacritic, a crossed t - sits within the
+    horizontal run of the writing and hugs it vertically. A detached letter - the ר of a
+    רז written with daylight between the letters - sits just beside the main stroke on
+    the same line. Both are far smaller than a quarter of the signature, so the size rule
+    alone deletes them. Furniture sits out at the margins, whole signature-widths away.
     """
     left, top, width, height = (blob[cv2.CC_STAT_LEFT], blob[cv2.CC_STAT_TOP],
                                 blob[cv2.CC_STAT_WIDTH], blob[cv2.CC_STAT_HEIGHT])
     main_left, main_top, main_width, main_height = (
         main[cv2.CC_STAT_LEFT], main[cv2.CC_STAT_TOP],
         main[cv2.CC_STAT_WIDTH], main[cv2.CC_STAT_HEIGHT])
+    rows_overlap = (top < main_top + main_height) and (top + height > main_top)
     if left < main_left or left + width > main_left + main_width:
-        return False
+        gap = max(main_left - (left + width), left - (main_left + main_width))
+        return rows_overlap and gap <= NEIGHBOUR_REACH * main_height
     reach = ACCENT_REACH * main_height
     return (top + height >= main_top - reach) and (top <= main_top + main_height + reach)
 
@@ -141,6 +149,11 @@ def isolate_signature_ink(img: Image.Image,
     return Image.fromarray(cleaned)
 
 
+# At most this many surviving regions reads as a close-up of one signature, where the
+# extractor may have split the letters apart; a specimen card yields far more.
+CLOSE_UP_REGIONS = 3
+
+
 def candidate_crops(image_bytes: bytes) -> list[Image.Image]:
     """Every region of a photograph that could be a signature, prepared for the model.
 
@@ -148,8 +161,26 @@ def candidate_crops(image_bytes: bytes) -> list[Image.Image]:
     reference and a query prepared differently are not comparable. Flatten first:
     extraction thresholds globally and cannot see past a shadow. Then drop what cannot be
     handwriting, because a photographed page's dark edge extracts like any other region.
+
+    A close-up of a signature written with space between its letters extracts as one
+    region per letter, and no piece is the signature. The extractor cannot be widened -
+    it is shared with training - so a photograph that yields only a few regions also
+    offers the whole frame prepared the same way, letters reunited.
     """
     even = flatten_image_bytes(image_bytes)
-    return [crop for crop in (isolate_signature_ink(region)
-                              for region in extract_vertical_anchors(even))
-            if looks_like_signature(np.asarray(crop.convert("L")))]
+    regions = extract_vertical_anchors(even)
+    crops = [crop for crop in (isolate_signature_ink(region) for region in regions)
+             if looks_like_signature(np.asarray(crop.convert("L")))]
+    # One region that survived intact is the ordinary close-up and needs no company.
+    # Several small regions are letters split apart; fewer kept than found means the
+    # filter discarded pieces. Both are reasons to offer the frame as well.
+    if len(crops) <= CLOSE_UP_REGIONS and (len(crops) != 1 or len(crops) < len(regions)):
+        whole = isolate_signature_ink(
+            Image.open(io.BytesIO(even)).convert("L"))
+        pixels = np.asarray(whole.convert("L"))
+        ink = pixels < 128
+        # The frame's own shape says nothing about the writing on it, so the aspect
+        # rule does not apply here - a portrait photo of a wide signature is fine.
+        if int(ink.sum()) >= MIN_INK_PIXELS and float(ink.mean()) <= MAX_INK_FRACTION:
+            crops.append(whole)
+    return crops
