@@ -70,9 +70,15 @@ def pad_for_rotation(img: Image.Image) -> Image.Image:
     after changing it.
     """
     small = img.convert("L")
-    if max(small.size) > PAD_WORKING_EDGE:
-        small = small.copy()
-        small.thumbnail((PAD_WORKING_EDGE, PAD_WORKING_EDGE), Image.LANCZOS)
+    if max(small.size) != PAD_WORKING_EDGE:
+        # Up as well as down. The transform blurs with a fixed 5px kernel before Otsu,
+        # so a small card crop binarises ~15% thicker than the same ink at scale, and
+        # references cut small read as a different pen from queries photographed large -
+        # a whole card of genuine specimens self-tested as fraud. One working size means
+        # one stroke weight whichever side the image came from.
+        scale = PAD_WORKING_EDGE / max(small.size)
+        small = small.resize((max(1, round(small.width * scale)),
+                              max(1, round(small.height * scale))), Image.LANCZOS)
     side = max(math.ceil(math.hypot(*small.size)), PAD_FACTOR * max(small.size))
     padded = Image.new("L", (side, side), PAPER)
     padded.paste(small, ((side - small.width) // 2, (side - small.height) // 2))
