@@ -28,7 +28,11 @@ organisation can then verify a signature against every institution's references 
 receives a verdict (VALID / FRAUD / BORDERLINE), a distance, and a similarity figure.
 One CNN embeds signature images into 128-dimensional vectors; verification is the mean
 L2 distance between a query embedding and one customer's reference embeddings, compared
-against a fixed threshold.
+against a threshold matched to that customer: the spread between their own references
+(mean pairwise distance + 0.35 × its standard deviation), capped at the global 0.3999.
+A consistent signer gets a tighter bar - a forgery measured at 0.27 passed the global
+threshold while sitting outside its writer's own spread - and a variable signer is never
+held to more than the global one.
 
 Three quality goals rank above everything else:
 
@@ -182,11 +186,13 @@ sequenceDiagram
     alt image fails quality
         A-->>B: 422 INVALID_IMAGE
     end
+    A->>A: isolate_signature_ink - every query cleaned, whatever path it arrived by
     A->>M: embed(pad_for_rotation(image))
     M-->>A: 128-float embedding
     A->>D: load every reference (all organisations)
     D-->>A: reference rows + embeddings
-    A->>A: L2 distance per reference, decide(mean, 0.3999), band +-0.05
+    A->>A: writer threshold from the spread between references, capped at 0.3999
+    A->>A: L2 distance per reference, decide(mean, writer threshold), band +-0.05
     A->>D: insert verification row
     A->>A: normalise to 224x224, encrypt under customer DEK, AAD = row id
     A->>D: audit "verify" - this commit lands row, image, audit together
@@ -216,7 +222,7 @@ sequenceDiagram
     B->>A: POST card photo (repeatable)
     A->>A: candidate_crops: flatten, anchors, isolate ink
     A->>S: add crops, dedupe by digest, cap 40
-    A-->>B: crop previews to select from
+    A-->>B: previews as the model's 224px rendition - the clerk selects what the model will see
     B->>A: POST approve (chosen crop ids)
     alt append mode
         A->>A: each new crop vs existing references
@@ -280,14 +286,14 @@ are additive only, through `migrate.py`, with SQLAlchemy types compiled per dial
 flowchart TD
     RAW["uploaded photo bytes"] --> FL["flatten_illumination<br/>divide out lighting"]
     FL --> AN["extract_vertical_anchors - FROZEN<br/>Otsu, contours, one crop per signature"]
-    AN --> ISO["isolate_signature_ink<br/>remove ruled lines, keep stroke blobs"]
+    AN --> ISO["isolate_signature_ink<br/>remove ruled lines, keep stroke blobs<br/>and detached letters beside the stroke"]
     ISO --> LK["looks_like_signature filter"]
-    LK --> PAD["pad_for_rotation<br/>square canvas, deskew cannot clip ink"]
+    LK --> PAD["pad_for_rotation<br/>every crop at one 512px working size,<br/>canvas 3x the writing: one stroke weight,<br/>deskew cannot clip, line remover cannot<br/>reach the signature's own strokes"]
     PAD --> UT["UnifiedSignatureTransform - FROZEN<br/>binarise, deskew, crop, 224x224"]
     UT --> CNN["CustomSiameseCNN - FROZEN<br/>4 conv blocks, FC 512 to 128"]
     CNN --> EMB["128-float embedding"]
     EMB --> DIST["L2 distance to each reference embedding"]
-    DIST --> DEC["decide: mean vs threshold 0.3999<br/>band: borderline within +-0.05"]
+    DIST --> DEC["decide: mean vs writer threshold<br/>(reference spread + 0.35 sigma, cap 0.3999)<br/>band: borderline within +-0.05"]
 ```
 
 **Architecture Invariant: the frozen pipeline.** `anchors.py`, `preprocess.py` and
@@ -345,9 +351,9 @@ lives only in the repository query helpers.
 | `anchors.py` | find signature regions on a specimen card | **yes** |
 | `preprocess.py` | `UnifiedSignatureTransform`: binarise, deskew, crop, 224×224 | **yes** |
 | `embed.py`, `model.py` | the CNN, image → 128 floats | **yes** |
-| `cleanup.py` | illumination flattening, ink isolation, `candidate_crops` | no |
+| `cleanup.py` | illumination flattening, ink isolation, `candidate_crops`, `pad_for_rotation` working size | no |
 | `quality.py` | is this decodable, lit, signature-shaped | no |
-| `decision.py` | threshold 0.3999, borderline band ±0.05 | no |
+| `decision.py` | writer-adaptive threshold (reference spread + 0.35σ, capped at 0.3999), borderline band ±0.05 | no |
 
 > **Invariant - the frozen pipeline.** The frozen modules are shared with training;
 > cleanup wraps them and never enters them, or the weights stop matching what they were

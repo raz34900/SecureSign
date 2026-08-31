@@ -140,3 +140,10 @@ copy. Ends with `DRILL PASSED`. Run it again whenever you want the same proof.
     docker compose down               # remove containers, KEEPING data volumes
 
 `docker compose down -v` deletes the database and the backups. There is no undo.
+
+After a deploy that changes image preparation (anything in
+`packages/signature_core/cleanup.py`, most of all `pad_for_rotation`), rebuild every
+stored reference embedding, or references are compared under a preparation they were
+never embedded with:
+
+    docker compose exec api python scripts/reembed_references.py

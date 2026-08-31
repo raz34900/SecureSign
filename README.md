@@ -55,6 +55,12 @@ This system was developed as a comprehensive academic capstone project by **Raz 
   with the decision line drawn on a scale.
 - **Three-outcome verdicts** - a distance within ±0.05 of the threshold is called
   **BORDERLINE**, because a coin-flip from an 84%-accurate model should say so.
+- **A threshold matched to the writer** - the decision bar tightens to how consistently
+  each customer actually signs, measured from their own references at every
+  verification; it never loosens past the ROC-derived global threshold.
+- **What you see is what the model sees** - enrolment crops, verify region previews and
+  the compare screen all render the same normalised model input, so a bad capture is
+  obvious before it becomes a reference or a verdict.
 - **Shared registry, scoped visibility** - every organisation verifies against all
   references; each sees only the customers and history it is entitled to. A record
   belonging to another organisation answers 404, never 403.
@@ -339,6 +345,8 @@ d(x, y) = \sqrt{\sum_{i=1}^{128} \left(f(x)_i - f(y)_i\right)^2}
 ```
 
 If the average distance across all saved anchors is below our optimal threshold (**0.3999**), the signature is classified as genuine.
+
+In production the threshold additionally adapts to each customer: the system measures the spread between the customer's own reference signatures (mean pairwise distance + 0.35 × its standard deviation) and uses that as the bar wherever it is stricter than 0.3999. A consistent signer therefore gets a tighter threshold - a forgery that scored 0.27 against a tightly-signed card passed the global threshold while sitting outside that writer's own spread - while a naturally variable signer is never held to more than the ROC-derived global one. Computed live from the reference embeddings at every verification, so it always reflects the reference set as it stands.
 
 ### 5. Confidence Score Mapping
 **[🔗 View Implementation in `decision.py`](packages/signature_core/decision.py)**
