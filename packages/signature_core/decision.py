@@ -5,6 +5,31 @@ THRESHOLD = 0.3999
 
 BORDERLINE_MARGIN = 0.05
 
+# How far past a writer's own spread a query may sit and still be called genuine.
+# Chosen on five real cards: 0.35 caught every measured forgery - including one that
+# scored 0.27, comfortably genuine under the global threshold - at the cost of flagging
+# the four specimens already known to disagree with their own cards.
+SPREAD_FACTOR = 0.35
+
+
+def writer_threshold(intra_distances: list[float], ceiling: float = THRESHOLD) -> float:
+    """A threshold matched to how consistently this writer actually signs.
+
+    A tight card means a forgery does not have to be far to be foreign: one measured
+    at 0.27 was accepted by the global threshold and sat outside its writer's own
+    spread. A loose card gets the global ceiling, never more - this only ever
+    tightens. With fewer than two distinct references there is no spread to measure,
+    and the ceiling stands.
+    """
+    if len(intra_distances) < 2:
+        return ceiling
+    mean = sum(intra_distances) / len(intra_distances)
+    variance = sum((d - mean) ** 2 for d in intra_distances) / len(intra_distances)
+    spread = variance ** 0.5
+    if spread == 0.0:
+        return ceiling
+    return min(mean + SPREAD_FACTOR * spread, ceiling)
+
 
 def mean_distance(distances: list[float]) -> float:
     return sum(distances) / len(distances)

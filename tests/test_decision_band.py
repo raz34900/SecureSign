@@ -65,3 +65,24 @@ def test_the_client_is_never_asked_to_recompute_the_band():
         text = path.read_text()
         assert "BORDERLINE_MARGIN" not in text, f"{path} recomputes the band"
         assert "classifyDecision" not in text, f"{path} recomputes the band"
+
+
+def test_writer_threshold_tightens_for_a_consistent_writer():
+    """A forgery measured at 0.27 was accepted by the global threshold while sitting
+    outside its writer's own spread. The threshold follows the writer's consistency:
+    a tight card lowers the bar, a loose card gets the global ceiling, never more."""
+    from signature_core.decision import writer_threshold
+
+    tight = [0.20, 0.24, 0.26, 0.22, 0.25, 0.23]
+    assert writer_threshold(tight) < THRESHOLD
+
+    loose = [0.30, 0.55, 0.70, 0.45, 0.60, 0.38]
+    assert writer_threshold(loose) == THRESHOLD
+
+
+def test_writer_threshold_falls_back_without_a_measurable_spread():
+    from signature_core.decision import writer_threshold
+
+    assert writer_threshold([]) == THRESHOLD
+    assert writer_threshold([0.2]) == THRESHOLD
+    assert writer_threshold([0.0, 0.0, 0.0]) == THRESHOLD

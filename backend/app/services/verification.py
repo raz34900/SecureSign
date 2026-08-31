@@ -20,7 +20,8 @@ from backend.app.repositories import verifications as verifications_repo
 from backend.app.security import envelope
 from backend.app.security.crypto import blind_index
 from signature_core.cleanup import isolate_signature_ink, pad_for_rotation
-from signature_core.decision import BORDERLINE_MARGIN, band, calculate_confidence, decide
+from signature_core.decision import (BORDERLINE_MARGIN, band, calculate_confidence,
+                                     decide, writer_threshold)
 from signature_core.preprocess import UnifiedSignatureTransform
 from signature_core.quality import validate_image_quality
 
@@ -236,7 +237,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
     # references that were all flattened and isolated. Same preparation or no comparison.
     query_img = isolate_signature_ink(Image.open(io.BytesIO(image_bytes)).convert("L"))
     query_vec = embedder.embed(pad_for_rotation(query_img))
-    refs, distances = [], []
+    refs, vectors, distances = [], [], []
     skipped = 0
     for ref in references_repo.all_for(db, customer.id):
         vector = references_repo.decode_embedding(ref.embedding)
@@ -244,6 +245,7 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
             skipped += 1  # one damaged row must not fail the whole comparison
             continue
         refs.append(ref)
+        vectors.append(vector)
         distances.append(float(np.linalg.norm(vector - query_vec)))
 
     if skipped:
@@ -255,7 +257,12 @@ def run(db: Session, embedder, *, national_id: str, image_bytes: bytes,
                        "This customer's reference signatures could not be read. "
                        "The enrolling institution needs to re-enrol them.", 500)
 
-    result = decide(distances, settings.threshold)
+    # The threshold adapts to how consistently this customer signs, derived from the
+    # spread between their own references - computed live, so it always reflects the
+    # reference set as it stands today.
+    intra = [float(np.linalg.norm(a - b))
+             for i, a in enumerate(vectors) for b in vectors[i + 1:]]
+    result = decide(distances, writer_threshold(intra, settings.threshold))
 
     row = verifications_repo.add(db, customer_id=customer.id, org_id=org_id, user_id=user_id,
                                  decision=result.verdict, distance=result.distance,
