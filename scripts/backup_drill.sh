@@ -56,7 +56,11 @@ SIZE=$(grep -o 'full backup size = [^,]*' "$LOG" | cut -d= -f2 | tr -d ' ' || tr
 ok "${SIZE:-?} as ${LABEL:-?}"
 
 printf '[3/5] Staging an accident in a scratch table:\n'
-psql_live "CREATE TABLE IF NOT EXISTS backup_drill (at timestamptz primary key, note text)"
+# Dropped first, never reused: a failed run leaves its rows behind, and a leftover
+# "mistake" older than this run's target survives the restore correctly - which the
+# verdict below would misread as the point-in-time target not being honoured.
+psql_live "DROP TABLE IF EXISTS backup_drill"
+psql_live "CREATE TABLE backup_drill (at timestamptz primary key, note text)"
 MARKER="drill-$(date +%s)"
 psql_live "INSERT INTO backup_drill VALUES (now(), '$MARKER')"
 printf '        %s  marker row written        - only in WAL, newer than the backup: must survive\n' "$(clock)"
