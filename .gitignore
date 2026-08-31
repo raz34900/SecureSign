@@ -18,3 +18,4 @@ deploy/tls/*.crt
 deploy/tls/*.key
 mock_database/
 deploy/logs/
+deploy/backups/

@@ -118,8 +118,7 @@ services:
       start_period: 10s
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - pgbackrest:/var/lib/pgbackrest
+      - ./deploy/backups:/var/lib/pgbackrest
 
 volumes:
   pgdata:
-  pgbackrest:
