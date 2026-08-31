@@ -17,7 +17,6 @@ set -eu
 
 SCRATCH=ss-restore-drill
 NET=securesign_default
-REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)/deploy/backups"
 LOG=$(mktemp)
 
 step() { printf '%s' "$1"; }
@@ -75,8 +74,11 @@ sleep 3
 step "[4/5] Restore into a scratch container .................. "
 docker compose exec -T db test -f /var/lib/pgbackrest/backup/main/backup.info \
   || fail "the db container holds no repository at /var/lib/pgbackrest"
-[ -f "$REPO_DIR/backup/main/backup.info" ] \
-  || fail "$REPO_DIR is not the live backup repository - the drill would restore from the wrong place"
+# The scratch container must mount exactly what the live db container mounts - asking
+# the daemon removes any way for this script and the compose file to disagree.
+REPO_DIR=$(docker inspect "$(docker compose ps -q db)" \
+  --format '{{range .Mounts}}{{if eq .Destination "/var/lib/pgbackrest"}}{{.Source}}{{end}}{{end}}')
+[ -n "$REPO_DIR" ] || fail "could not resolve the live repository mount from the db container"
 # The image NAME from the compose config, not the running container's image id: a
 # container left running across a rebuild reports a sha the daemon may no longer resolve.
 IMAGE=$(docker compose config --images 2>/dev/null | grep -m1 '\-db$' || true)
