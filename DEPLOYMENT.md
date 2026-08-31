@@ -139,7 +139,9 @@ copy. Ends with `DRILL PASSED`. Run it again whenever you want the same proof.
     docker compose logs -f api       # follow the API log
     docker compose down               # remove containers, KEEPING data volumes
 
-`docker compose down -v` deletes the database and the backups. There is no undo.
+`docker compose down -v` deletes the database volume. There is no undo. The backup
+repository is not touched: it lives on the host at `deploy/backups`, bind-mounted into
+the db container, and is removed only by deleting that directory yourself.
 
 After a deploy that changes image preparation (anything in
 `packages/signature_core/cleanup.py`, most of all `pad_for_rotation`), rebuild every

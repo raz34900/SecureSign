@@ -17,7 +17,7 @@ set -eu
 
 SCRATCH=ss-restore-drill
 NET=securesign_default
-REPO_VOLUME=securesign_pgbackrest
+REPO_DIR="$(cd "$(dirname "$0")/.." && pwd)/deploy/backups"
 LOG=$(mktemp)
 
 step() { printf '%s' "$1"; }
@@ -73,13 +73,17 @@ psql_live "SELECT pg_switch_wal()" >/dev/null
 sleep 3
 
 step "[4/5] Restore into a scratch container .................. "
+docker compose exec -T db test -f /var/lib/pgbackrest/backup/main/backup.info \
+  || fail "the db container holds no repository at /var/lib/pgbackrest"
+[ -f "$REPO_DIR/backup/main/backup.info" ] \
+  || fail "$REPO_DIR is not the live backup repository - the drill would restore from the wrong place"
 # The image NAME from the compose config, not the running container's image id: a
 # container left running across a rebuild reports a sha the daemon may no longer resolve.
 IMAGE=$(docker compose config --images 2>/dev/null | grep -m1 '\-db$' || true)
 [ -n "$IMAGE" ] || IMAGE=securesign-db
 docker rm -f "$SCRATCH" >/dev/null 2>&1 || true
 quiet docker run -d --name "$SCRATCH" --network "$NET" \
-  -v "$REPO_VOLUME":/var/lib/pgbackrest \
+  -v "$REPO_DIR":/var/lib/pgbackrest \
   -e PGBACKREST_REPO1_CIPHER_TYPE="${PGBACKREST_REPO1_CIPHER_TYPE:-aes-256-cbc}" \
   -e PGBACKREST_REPO1_CIPHER_PASS="${BACKUP_REPO_PASSPHRASE:?export BACKUP_REPO_PASSPHRASE}" \
   --entrypoint sleep "$IMAGE" 3600 || fail "scratch container did not start"
