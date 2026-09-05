@@ -12,7 +12,7 @@ Five minutes of setup, then one build that takes a few minutes the first time.
 
 ## 2. Clone
 
-    git clone <repository-url> securesign
+    git clone https://github.com/raz34900/SecureSign.git securesign
     cd securesign
 
 Everything below runs from the repository root - the compose file reads `.env` from the
